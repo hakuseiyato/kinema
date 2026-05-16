@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "kinema_spike0"
+version = "0.0.1"
+name = "Kinema spike0"
+tagline = "Blender 5.x API 検証用テストアドオン"
+maintainer = "Yato <hakuseiyato@example.com>"
+type = "add-on"
+
+blender_version_min = "4.2.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+
+tags = ["Development"]

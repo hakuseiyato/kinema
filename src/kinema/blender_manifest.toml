@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "kinema"
+version = "2.0.0-alpha1"
+name = "Kinema"
+tagline = "Camera workflow + custom multi-track shot timeline for Blender 5.x"
+maintainer = "Yato <hakuseiyato@example.com>"
+type = "add-on"
+
+blender_version_min = "4.2.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+
+tags = ["Camera", "Animation", "Sequencer"]
