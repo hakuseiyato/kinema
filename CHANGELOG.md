@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1.5] - 2026-05-16
+
+### Added
+- **Active Instance パネルに Shift / Depth of Field セクション**を追加
+  - Shift X / Y を 1 行に並べて編集
+  - 被写界深度: use_dof トグル / Focus Object / Focus Distance（Object が
+    無い場合のみ）/ F-Stop / Blades / Rotation / Ratio
+  - データの真は Camera Data そのもの。Instance スキーマは増やさず、
+    `cam.data` / `cam.data.dof` を `layout.prop` で直接編集
+  - Duplicate 時は `data.copy()` で独立コピーされるので、Instance ごとに
+    別 DoF / Shift 設定を持てる（共有はしない）
+
 ## [2.0.0-beta1.4] - 2026-05-16
 
 ### Added (breaking)

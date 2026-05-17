@@ -136,6 +136,33 @@ class KINEMA_PT_main(bpy.types.Panel):
                 lens_row.prop(inst, "lens_mm")
                 lens_row.operator("kinema.apply_lens", text="", icon="CHECKMARK")
 
+                # Shift（Camera Data 直接編集）
+                if cam.data is not None:
+                    shift_col = detail.column(align=True)
+                    shift_col.label(text="Shift", icon="OBJECT_ORIGIN")
+                    shift_row = shift_col.row(align=True)
+                    shift_row.prop(cam.data, "shift_x", text="X")
+                    shift_row.prop(cam.data, "shift_y", text="Y")
+
+                # Depth of Field（Camera Data.dof 直接編集）
+                if cam.data is not None:
+                    dof = cam.data.dof
+                    dof_box = detail.box()
+                    dof_box.prop(
+                        dof, "use_dof",
+                        text="Depth of Field", icon="CON_CAMERASOLVER",
+                    )
+                    if dof.use_dof:
+                        dof_box.prop(dof, "focus_object", text="Focus Object")
+                        if dof.focus_object is None:
+                            dof_box.prop(dof, "focus_distance", text="Focus Distance")
+                        aperture = dof_box.column(align=True)
+                        aperture.label(text="Aperture")
+                        aperture.prop(dof, "aperture_fstop", text="F-Stop")
+                        aperture.prop(dof, "aperture_blades", text="Blades")
+                        aperture.prop(dof, "aperture_rotation", text="Rotation")
+                        aperture.prop(dof, "aperture_ratio", text="Ratio")
+
                 # Follow
                 follow_col = detail.column(align=True)
                 follow_col.label(text="Follow")
