@@ -109,15 +109,26 @@ def _find_or_set_track_to(cam_obj, proxy) -> bpy.types.Constraint:
 
 
 def update_lookat(cam_obj, params, dt: float) -> None:
-    """LookAt Proxy を target にラグ追従させる。"""
+    """LookAt Proxy を `params.lookat_target` にラグ追従させる（後方互換用）。"""
     target = refs.safe_object(getattr(params, "lookat_target", None))
+    if target is None:
+        return
+    update_lookat_with_target(cam_obj, target, params.lookat_damping, dt)
+
+
+def update_lookat_with_target(cam_obj, target, damping: float, dt: float) -> None:
+    """target を明示指定して LookAt 追従させる。
+
+    Follow Target を自動 LookAt する場合などで Instance Item のスキーマに
+    縛られず使えるようにした版。
+    """
     if target is None or cam_obj is None:
         return
 
     proxy = _ensure_lookat_proxy(cam_obj, target)
     _find_or_set_track_to(cam_obj, proxy)
 
-    alpha = damping_alpha(params.lookat_damping, dt)
+    alpha = damping_alpha(damping, dt)
     target_pos = target.matrix_world.translation
     if alpha >= 0.999:
         proxy.location = target_pos

@@ -75,6 +75,15 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
     follow_height: FloatProperty(name="Height", default=1.5, update=_apply_now)
     follow_side: FloatProperty(name="Side Offset", default=0.0, update=_apply_now)
     follow_damping: FloatProperty(name="Follow Damping", default=0.3, min=0.0, max=1.0, update=_apply_now)
+    follow_auto_lookat: BoolProperty(
+        name="Auto Look at Follow Target",
+        description=(
+            "LookAt Target が未指定の場合、Follow Target を自動的に注視する。"
+            "「変な方向を見る」事故を防ぐ"
+        ),
+        default=True,
+        update=_apply_now,
+    )
 
     # --- LookAt ---
     lookat_target: PointerProperty(

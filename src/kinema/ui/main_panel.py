@@ -145,12 +145,25 @@ class KINEMA_PT_main(bpy.types.Panel):
                     follow_col.prop(inst, "follow_height")
                     follow_col.prop(inst, "follow_side")
                     follow_col.prop(inst, "follow_damping")
+                    follow_col.prop(inst, "follow_auto_lookat")
 
                 # LookAt
                 look_col = detail.column(align=True)
                 look_col.label(text="LookAt")
                 look_col.prop(inst, "lookat_target", text="Target")
-                if refs.safe_object(inst.lookat_target):
+                # 明示指定がない場合に Follow Target を自動注視している旨を表示
+                if (
+                    not refs.safe_object(inst.lookat_target)
+                    and refs.safe_object(inst.follow_target)
+                    and inst.follow_auto_lookat
+                ):
+                    look_col.label(
+                        text=f"→ Auto: {inst.follow_target.name}",
+                        icon="HIDE_OFF",
+                    )
+                if refs.safe_object(inst.lookat_target) or (
+                    refs.safe_object(inst.follow_target) and inst.follow_auto_lookat
+                ):
                     look_col.prop(inst, "lookat_damping")
 
                 # Noise

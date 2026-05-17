@@ -68,6 +68,7 @@ class KINEMA_OT_duplicate_instance(KinemaOperator):
         inst.follow_height = src.follow_height
         inst.follow_side = src.follow_side
         inst.follow_damping = src.follow_damping
+        inst.follow_auto_lookat = src.follow_auto_lookat
         inst.lookat_target = src.lookat_target
         inst.lookat_damping = src.lookat_damping
         inst.noise_enabled = src.noise_enabled

@@ -4,6 +4,23 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1.3] - 2026-05-16
+
+### Added
+- **Follow Target の自動 LookAt**: Instance に
+  `follow_auto_lookat: BoolProperty(default=True)` を追加。
+  LookAt Target が空でも Follow Target を見続けるよう自動的に回転追従させる。
+  別オブジェクトを意図せず LookAt して挙動が崩れる事故を防ぐ
+- `runtime/follow_lookat.update_lookat_with_target`: 任意の target を引数で
+  渡せる LookAt 更新 API
+- UI: Follow セクションに `Auto Look at Follow Target` トグル。
+  LookAt セクションに「→ Auto: <object 名>」表示で何を見ているかを明示
+
+### Changed
+- `instance_dispatcher._apply_instances`: LookAt Target 明示指定 > Follow
+  Target 自動採用 > 何もない → Proxy 掃除、の優先順で評価
+- `KINEMA_OT_duplicate_instance`: `follow_auto_lookat` もコピー対象に
+
 ## [2.0.0-beta1.2] - 2026-05-16
 
 ### Removed (revert)
