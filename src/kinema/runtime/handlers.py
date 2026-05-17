@@ -27,12 +27,20 @@ def kinema_frame_change_pre(scene, depsgraph):  # noqa: ARG001
 # これにより Follow Target / LookAt Target が動いたとき（オブジェクト操作・
 # Outliner ドラッグ・他アドオンによる移動など）、再生していなくてもカメラが
 # 追従するようになる。dispatch 内の `_in_dispatch` ガードで再帰を防ぐ。
+#
+# 再生中は frame_change_pre に処理を任せる（Damping が効くため）。
+# depsgraph_update_post で重ねて呼ぶと dt=0 でスナップ上書きが起きてしまう。
 @persistent
 def kinema_depsgraph_update_post(scene, depsgraph):  # noqa: ARG001
-    # 再帰防止：dispatch 自身が cam.location を書き換えると再度 depsgraph が
-    # 更新されるが、_in_dispatch ガードがそれを抑止する。
     if shot_dispatcher._in_dispatch:
         return
+    # 再生中は frame_change_pre 経路に任せて Damping を活かす
+    try:
+        screen = bpy.context.screen
+        if screen is not None and screen.is_animation_playing:
+            return
+    except Exception:
+        pass
     shot_dispatcher.dispatch(scene)
 
 

@@ -35,6 +35,10 @@ class KINEMA_UL_instances(bpy.types.UIList):
                     break
 
         row = layout.row(align=True)
+
+        # index 番号（同名 Instance でも識別できるように）
+        row.label(text=f"#{index + 1}")
+
         row.prop(
             item, "enabled",
             text="", icon="HIDE_OFF" if item.enabled else "HIDE_ON",

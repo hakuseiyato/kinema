@@ -1,8 +1,8 @@
 """Preset UIList。
 
-情報量を増やしすぎないバランスで、判別に必要なものだけ表示する:
-  - 通常行: [カメラアイコン] <フル名 or ショート名> [カメラ名] [タグ] [レンズ]
-  - グループヘッダ: [▼アイコン] <グループ名>
+Outliner の階層構造をそのまま反映する設計に変更（旧 `_` 分割グループは撤廃）。
+親コレクションに Camera が無い場合、その親が "グループ" として扱われ、子は
+インデント表示される。
 """
 
 from __future__ import annotations
@@ -13,30 +13,26 @@ import bpy
 class KINEMA_UL_presets(bpy.types.UIList):
     """プリセット一覧 UIList。"""
 
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):  # noqa: ARG002,D401
-        if item.is_header:
-            row = layout.row()
-            row.alignment = "LEFT"
-            row.label(text=item.group, icon="OUTLINER_OB_GROUP_INSTANCE")
-            return
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):  # noqa: ARG002
+        row = layout.row(align=True)
 
-        # 通常行: グループ配下にぶら下がっているならインデントして表示
-        outer = layout.row(align=True)
+        # 階層インデント: group ("Hero/Subgroup") のスラッシュ数だけ空アイコンを出す
+        depth = item.group.count("/") + 1 if item.group else 0
+        for _ in range(depth):
+            row.label(text="", icon="BLANK1")
+
+        # 名前
+        row.label(text=item.name, icon="CAMERA_DATA")
+
+        # 親パス表示（深さ > 0 のときのみ）
         if item.group:
-            # グループ内: ショート名 + 元の完全名 (parenthesized)
-            outer.label(text="", icon="BLANK1")  # インデント
-            label_text = item.short_name or item.name
-            outer.label(text=label_text, icon="CAMERA_DATA")
-            # 元のコレクション名（フル）も小さく
-            if item.name and item.name != label_text:
-                outer.label(text=f"({item.name})")
-        else:
-            outer.label(text=item.name, icon="CAMERA_DATA")
+            parent_label = item.group.split("/")[-1]
+            row.label(text=f"in {parent_label}")
 
-        # 補助情報を右寄せ
-        right = outer.row(align=True)
+        # 右寄せ補助情報
+        right = row.row(align=True)
         right.alignment = "RIGHT"
-        if item.camera_name and item.camera_name != item.short_name:
+        if item.camera_name and item.camera_name != item.name:
             right.label(text=item.camera_name, icon="OUTLINER_OB_CAMERA")
         if item.has_anim:
             right.label(text="", icon="ANIM")

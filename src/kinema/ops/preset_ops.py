@@ -17,15 +17,15 @@ class KINEMA_OT_scan_presets(KinemaOperator):
 
     def run(self, context):
         st = context.scene.kinema
-        flat = kn_collections.scan_presets_grouped(context.scene, st.preset_root_name)
+        flat = kn_collections.scan_presets(context.scene, st.preset_root_name)
         st.presets.clear()
         for entry in flat:
             item = st.presets.add()
             item.name = entry["name"]
-            item.is_header = entry["is_header"]
+            item.is_header = False  # 新仕様ではヘッダ行を使わない
             item.group = entry["group"]
             item.short_name = entry["short_name"]
-            item.display_name = entry["display_name"]
+            item.display_name = entry["short_name"]
             item.camera_name = entry["camera_name"]
             meta = entry["meta"]
             item.tags = meta["tags"]
@@ -38,7 +38,7 @@ class KINEMA_OT_scan_presets(KinemaOperator):
             st.active_preset_index = min(st.active_preset_index, len(st.presets) - 1)
         else:
             st.active_preset_index = 0
-        self.report({"INFO"}, f"Scan: {len([e for e in flat if not e['is_header']])} presets")
+        self.report({"INFO"}, f"Scan: {len(flat)} presets")
         return {"FINISHED"}
 
 
@@ -75,15 +75,16 @@ class KINEMA_OT_load_preset(KinemaOperator):
         )
 
         # 安全チェック: 既存 Instance と同じ collection_ref を指していないか
+        # ※ 通常は duplicate_collection が必ず新規 collection を返すので発生しないが、
+        #    万一の時はロールバックせず警告のみに留める（過剰発動を避ける）。
         for existing in st.instances:
             if refs.safe_collection(existing.collection_ref) is new_coll:
                 self.report(
-                    {"ERROR"},
-                    f"Load 失敗: 名前重複検出 ({new_coll.name})。"
-                    " Refresh Instances を実行してください",
+                    {"WARNING"},
+                    f"既存 Instance が同じ collection を参照 ({new_coll.name}). "
+                    "UI の DUP マークで確認してください",
                 )
-                kn_collections.remove_collection_recursive(new_coll)
-                return {"CANCELLED"}
+                break
 
         inst = st.instances.add()
         inst.name = new_coll.name

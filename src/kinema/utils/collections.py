@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import Optional
 
 import bpy
@@ -69,77 +68,72 @@ def _read_collection_meta(coll) -> dict:
     }
 
 
-def _split_group(name: str) -> tuple[str, str]:
-    """名前を `GROUP_SHORT` 形式とみなしてグループとショート名を分離。"""
-    if "_" in name:
-        g, s = name.split("_", 1)
-        return g, s
-    return "", name
-
-
-def scan_presets(scene, preset_root_name: str) -> list[dict]:
-    """Preset Root 直下の子コレクションをスキャンしてフラットな辞書のリストを返す。"""
-    root = get_preset_root(scene, preset_root_name)
-    if root is None:
-        return []
-    result: list[dict] = []
-    for child in root.children:
-        cam = find_first_camera(child)
-        group, short = _split_group(child.name)
-        result.append({
-            "name": child.name,
-            "group": group,
-            "short_name": short,
-            "camera_name": cam.name if cam else "",
-            "meta": _read_collection_meta(child),
-        })
-    result.sort(key=lambda x: (x["group"], x["short_name"]))
-    return result
-
-
 _EMPTY_META = {
     "tags": "", "has_anim": False, "default_lens": 0.0, "preview_end": 0,
     "follow_target": "", "lookat_target": "",
 }
 
 
-def scan_presets_grouped(scene, preset_root_name: str, min_group_size: int = 2) -> list[dict]:
-    """scan_presets の結果にグループヘッダを挿入したリストを返す。
+def scan_presets(scene, preset_root_name: str) -> list[dict]:
+    """Preset Root 配下を **再帰スキャン**し、Camera を含むコレクションを Preset として返す。
 
-    UI 上で「`FOH_LS / FOH_MS` は FOH グループでヘッダ表示」のような視覚分離に使う。
+    - 階層は Outliner の構造をそのまま反映する
+    - 親コレクションに Camera が無ければそれは「グループ」として `parent_path` を持つ
+      子 Preset から参照される（UI でインデント表示する）
+    - `_` 分割やヒューリスティックなグループ化は行わない（Yato さん要望）
+
+    返値の各エントリのキー:
+      name        : コレクション名そのまま
+      depth       : Preset Root 直下を 0 とした階層深さ
+      parent_path : 親コレクション名のリスト（root を除く）
+      group       : "/".join(parent_path)（UI 表示用、ルート直下なら ""）
+      short_name  : name と同じ（互換のため残す）
+      camera_name : 代表カメラ名
+      meta        : カスタムプロパティから読んだ辞書
     """
-    flat = scan_presets(scene, preset_root_name)
-    if not flat:
+    root = get_preset_root(scene, preset_root_name)
+    if root is None:
         return []
-    counts = Counter(p["group"] for p in flat if p["group"])
+    result: list[dict] = []
+    _walk_presets(root, parent_path=[], depth=-1, result=result, skip_self=True)
+    return result
 
-    grouped: list[dict] = []
-    last_group: Optional[str] = None
-    for p in flat:
-        g = p["group"]
-        if g and counts[g] >= min_group_size:
-            if g != last_group:
-                grouped.append({
-                    "is_header": True,
-                    "name": g,
-                    "group": g,
-                    "short_name": "",
-                    "display_name": g,
-                    "camera_name": "",
-                    "meta": dict(_EMPTY_META),
-                })
-                last_group = g
-            entry = dict(p)
-            entry["is_header"] = False
-            entry["display_name"] = p["short_name"]
-            grouped.append(entry)
-        else:
-            entry = dict(p)
-            entry["is_header"] = False
-            entry["display_name"] = p["name"]
-            grouped.append(entry)
-            last_group = None
-    return grouped
+
+def _walk_presets(coll, parent_path, depth, result, skip_self=False):
+    """coll を再帰的に走査して Camera を含むコレクションを result に追記。
+
+    skip_self=True で root 自身は Preset として登録しない（ルート用フラグ）。
+    """
+    # 直接の objects に Camera があるか
+    has_direct_camera = any(obj.type == "CAMERA" for obj in coll.objects)
+    cam = find_first_camera(coll) if has_direct_camera else None
+
+    if has_direct_camera and not skip_self:
+        result.append({
+            "name": coll.name,
+            "depth": depth,
+            "parent_path": list(parent_path),
+            "group": "/".join(parent_path),
+            "short_name": coll.name,
+            "camera_name": cam.name if cam else "",
+            "meta": _read_collection_meta(coll),
+        })
+
+    # Camera を含むコレクションは Preset 確定とみなし、その内側は再帰しない。
+    # （プリセット内部のサブコレクションは「補助オブジェクトのまとまり」と解釈）
+    if has_direct_camera and not skip_self:
+        return
+
+    # Camera を含まないコレクション、または root 自身は「グループ」として子を辿る
+    next_path = parent_path if skip_self else parent_path + [coll.name]
+    for child in coll.children:
+        _walk_presets(child, next_path, depth + 1, result, skip_self=False)
+
+
+# 旧 API 互換（main_panel から呼ばれていたら）
+def scan_presets_grouped(scene, preset_root_name, min_group_size=2):  # noqa: ARG001
+    """互換シム。新仕様では re-encode 不要なので scan_presets と同じものを返す。"""
+    return scan_presets(scene, preset_root_name)
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +163,8 @@ def _copy_recursive(
     new_name: str,
 ) -> bpy.types.Collection:
     new_coll = bpy.data.collections.new(new_name)
+    # Blender が内部的に名前を変えた場合（new_coll.name != new_name）に備えて、
+    # 戻り値の実名のみを信用する。
     parent.children.link(new_coll)
     for obj in source.objects:
         new_obj = obj.copy()

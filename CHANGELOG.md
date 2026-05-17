@@ -4,6 +4,29 @@
 
 ## [Unreleased]
 
+## [2.0.0-alpha1.3] - 2026-05-16
+
+### Changed
+- **Preset 一覧を Outliner 階層と一致**：`_` 分割でのグループ化を撤廃し、
+  Preset Root を再帰スキャンして「Camera を含むコレクションを Preset、含まない
+  親コレクションはグループ」と素直に判定する方式に変更
+- `utils/collections.scan_presets`: 再帰スキャン版に書き直し、各エントリに
+  `depth` / `parent_path` / `group` を持たせる
+- `ui/presets_view`: グループヘッダ行を廃止し、`group` の深さに応じたインデント
+  と `in <親名>` の併記で階層を表示
+- `runtime/handlers.kinema_depsgraph_update_post`: **再生中は skip** して
+  `frame_change_pre` に処理を委譲（Damping が効くようにする）
+- `ui/instances_view`: 行頭に `#1 / #2` の index 番号を表示（同名 Instance の
+  判別性向上）
+- `ops/preset_ops.load_preset`: 重複検知を **警告のみ** に緩和（過剰発動による
+  ロールバックを防止）
+
+### Fixed
+- Yato さん指摘の「再生停止中だと Damping を持たない動きしか出ない」を
+  「停止中はスナップ / 再生中は Damping」のハイブリッドに切り替え
+- 旧 `_` 分割グループ化で `Sample_Camera` が "Sample" グループ + "Camera"
+  ショート名に分かれてしまい、Outliner と一致しない問題を解消
+
 ## [2.0.0-alpha1.2] - 2026-05-16
 
 ### Added
