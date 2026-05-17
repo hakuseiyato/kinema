@@ -7,3 +7,7 @@ __pycache__/
 *.zip
 .DS_Store
 Thumbs.db
+
+# Obsidian Vault (もしリポ内に作成された場合は git 管理外)
+Kinema/
+.obsidian/
