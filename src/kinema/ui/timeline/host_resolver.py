@@ -1,12 +1,16 @@
 """ホスト Area 識別。
 
-`SpaceImageEditor.draw_handler_add` は Image Editor の **全インスタンス**で
+kinema は **Video Sequencer (VSE)** をホストとして使う。
+`SpaceSequenceEditor.draw_handler_add` は Sequencer の **全インスタンス**で
 描画関数を呼ぶため、kinema 専用に指定された 1 つの Area だけで描画 / 入力を
 有効化するための識別ロジックを集約する。
 
 主キー: `Window.as_pointer()` / `Area.as_pointer()`（session 中のみ安定）
 二次キー: `Screen.name` + Area index（pointer が無効化された時の復帰用）
 """
+
+# kinema ホストとして扱う Editor タイプ
+HOST_AREA_TYPE = "SEQUENCE_EDITOR"
 
 from __future__ import annotations
 
@@ -95,7 +99,7 @@ def resolve_host_area() -> tuple[Optional[bpy.types.Window], Optional[bpy.types.
         areas = list(window.screen.areas)
         if 0 <= target_idx < len(areas):
             area = areas[target_idx]
-            if area.type == "IMAGE_EDITOR":
+            if area.type == HOST_AREA_TYPE:
                 # pointer を新値で更新（self-heal）
                 st.host_window_pointer = str(window.as_pointer())
                 st.host_area_pointer = str(area.as_pointer())

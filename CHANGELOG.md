@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1.1] - 2026-05-16
+
+### Changed
+- **ホスト Editor を Image Editor → Video Sequencer (VSE) に変更**
+  - `host_resolver.HOST_AREA_TYPE = "SEQUENCE_EDITOR"`
+  - `drawer`: `SpaceSequenceEditor.draw_handler_add` に切替
+  - `header_append`: `SEQUENCER_HT_header` に Append
+  - `modal_ops`: キーマップを "SequencerCommon" / SEQUENCE_EDITOR に登録
+  - `timeline_ops.toggle_timeline_mode`: エラーメッセージ更新
+  - `docs/beta1_smoke_test.md`: 手順を Sequencer に書き直し
+- タイムラインを扱うエディタとしての自然さを優先（Yato さん要望）
+
 ## [2.0.0-beta1] - 2026-05-16
 
 ### Added — Shot Timeline UI 基盤

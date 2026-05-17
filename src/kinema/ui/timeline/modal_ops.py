@@ -103,7 +103,8 @@ def register() -> None:
     kc = bpy.context.window_manager.keyconfigs.addon
     if kc is None:
         return
-    km = kc.keymaps.new(name="Image", space_type="IMAGE_EDITOR")
+    # Video Sequencer のキーマップに左クリックを登録
+    km = kc.keymaps.new(name="SequencerCommon", space_type="SEQUENCE_EDITOR")
     kmi = km.keymap_items.new(
         KINEMA_OT_timeline_click.bl_idname,
         type="LEFTMOUSE",

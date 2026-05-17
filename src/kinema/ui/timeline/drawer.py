@@ -1,7 +1,7 @@
 """タイムライン描画（gpu + blf）。
 
-ホスト Image Editor の Region に POST_PIXEL レイヤで以下を描く:
-  1. 背景（暗色）
+ホスト Video Sequencer (VSE) の WINDOW Region に POST_PIXEL レイヤで描画:
+  1. 背景（暗色、VSE 標準ストリップを上書き）
   2. フレームグリッド + 秒目盛り
   3. トラック行
   4. Shot ストリップ
@@ -184,7 +184,7 @@ def _draw_callback():
     try:
         context = bpy.context
         area = context.area
-        if area is None or area.type != "IMAGE_EDITOR":
+        if area is None or area.type != host_resolver.HOST_AREA_TYPE:
             return
         if not host_resolver.is_host_area(area, context.window):
             return
@@ -212,7 +212,7 @@ def _draw_callback():
 def register() -> None:
     global _draw_handle
     if _draw_handle is None:
-        _draw_handle = bpy.types.SpaceImageEditor.draw_handler_add(
+        _draw_handle = bpy.types.SpaceSequenceEditor.draw_handler_add(
             _draw_callback, (), "WINDOW", "POST_PIXEL",
         )
 
@@ -221,7 +221,7 @@ def unregister() -> None:
     global _draw_handle
     if _draw_handle is not None:
         try:
-            bpy.types.SpaceImageEditor.draw_handler_remove(_draw_handle, "WINDOW")
+            bpy.types.SpaceSequenceEditor.draw_handler_remove(_draw_handle, "WINDOW")
         except Exception:
             pass
         _draw_handle = None

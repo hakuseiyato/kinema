@@ -178,7 +178,7 @@ class KINEMA_PT_main(bpy.types.Panel):
             tl_header.label(text="OFF", icon="X")
 
         tl_box.label(
-            text="Image Editor のヘッダから 'Kinema' を押すと有効化",
+            text="Video Sequencer のヘッダから 'Kinema' を押すと有効化",
             icon="INFO",
         )
         tl_ops = tl_box.row(align=True)

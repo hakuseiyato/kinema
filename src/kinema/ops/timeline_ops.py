@@ -50,8 +50,11 @@ class KINEMA_OT_toggle_timeline_mode(KinemaOperator):
             # ON: 現在の area / window をホストに指定
             area = context.area
             window = context.window
-            if area is None or area.type != "IMAGE_EDITOR":
-                self.report({"ERROR"}, "Image Editor から実行してください")
+            if area is None or area.type != host_resolver.HOST_AREA_TYPE:
+                self.report(
+                    {"ERROR"},
+                    "Video Sequencer から実行してください（Editor を切替→Sequencer）",
+                )
                 return {"CANCELLED"}
             host_resolver.claim_area(window, area)
             st.timeline_mode_on = True

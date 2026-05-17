@@ -1,6 +1,8 @@
 # beta1 Shot Timeline 動作確認手順
 
-beta1 では **Image Editor を kinema 専用タイムラインビューに転用** する独自 UI 基盤を実装した。Premiere 風の Shot ストリップ表示と、shot_dispatcher による `scene.camera` 自動切替が動作する。
+beta1 では **Video Sequencer (VSE) を kinema 専用タイムラインビューに転用** する独自 UI 基盤を実装した。Premiere 風の Shot ストリップ表示と、shot_dispatcher による `scene.camera` 自動切替が動作する。
+
+> kinema モード ON 時、ホスト Sequencer の WINDOW Region は kinema 側で塗り潰されるため、標準 VSE ストリップの表示は隠れる。Sequencer の View Type は **"Sequencer"** に切り替えておくこと（Preview ではなく）。
 
 ## 1. インストール / 再有効化
 
@@ -19,13 +21,14 @@ cd C:\Work\Yato\Claude\kinema\scripts
 
 ## 3. タイムラインビュー起動
 
-1. 任意のエリアを **Image Editor** に切り替える（左上アイコン）
-2. Image Editor のヘッダ右側に **"Kinema"** ボタンが出ているのでクリック
+1. 任意のエリアを **Video Sequencer** に切り替える（左上アイコン → "ビデオシーケンサー" / "Video Sequencer"）
+2. Sequencer の View Type は **"Sequencer"** に（"Preview" や "Sequencer & Preview" ではなく）
+3. Sequencer ヘッダ右側に **"Kinema"** ボタンが出ているのでクリック
    - 押すとそのエリアが kinema タイムラインビューになる
-   - ヘッダの "Kinema" 表記が "Kinema Timeline" + [Add Shot] [X] になる
-3. 中身が暗い背景 + 横方向にフレーム目盛り + 横線（トラック）が描かれる
+   - ヘッダの表記が "Kinema Timeline" + [Add Shot] [X] になる
+4. WINDOW Region が暗い背景 + 横方向にフレーム目盛り + 横線（トラック）で塗り替えられる
 
-> 複数の Image Editor を開いていても、kinema 化されるのは **押した 1 つだけ**。他の Image Editor は通常通り画像表示に使える。
+> 複数の Sequencer を開いていても、kinema 化されるのは **押した 1 つだけ**。他の Sequencer は標準動作のまま。
 
 ## 4. Shot を追加
 
@@ -59,19 +62,19 @@ Properties > Scene > Kinema の Shot Timeline セクションの:
 
 ## 9. タイムラインモード OFF
 
-タイムラインビュー ヘッダの **X ボタン** で OFF。Image Editor が通常表示に戻る。
+タイムラインビュー ヘッダの **X ボタン** で OFF。Sequencer が標準表示に戻る。
 
 ## 10. 確認したい挙動チェックリスト
 
-- [ ] Image Editor のヘッダに "Kinema" ボタンが出る
+- [ ] Video Sequencer のヘッダに "Kinema" ボタンが出る
 - [ ] クリックで kinema タイムラインビューが起動、暗い背景 + グリッド + トラック描画
-- [ ] 他の Image Editor を開いてもそちらは通常画像表示のまま
+- [ ] 他の Sequencer を開いてもそちらは標準動作のまま
 - [ ] Add Shot で Shot ストリップが描画される
 - [ ] 下マージンクリックで `scene.frame_current` が変わる
 - [ ] ストリップクリックで active_clip_uid が変わる（一覧でドットが移動）
 - [ ] プレイヘッドが Shot 範囲内に入ると scene.camera がその Shot のカメラに切替
 - [ ] 再生でも Shot 境界で切替
-- [ ] タイムラインモード OFF で Image Editor が通常表示に戻る
+- [ ] タイムラインモード OFF で Sequencer が標準表示に戻る
 - [ ] Workspace 切替して戻ってもタイムラインビューが復帰する（pointer or 二次キーで自己修復）
 
 ## beta2 で実装予定
