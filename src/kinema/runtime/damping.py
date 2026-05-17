@@ -32,19 +32,34 @@ _last_time_seen: dict[str, float] = {}
 def compute_dt(scene_name: str, frame_current: int, fps: float, fps_base: float = 1.0) -> float:
     """Damping 計算用の dt（秒）を返す。
 
-    再生中はフレーム差分、停止中は実時間経過を使う。
+    再生中はフレーム差分、停止中は実時間経過を使う。Damping 計算の dt は
+    「**滑らかに追従させたい時に > 0**」「**瞬間スナップさせたい時に 0**」を返す:
+
+      - フレームジャンプ |Δf|>2 → 0（スクラブで瞬間移動）
+      - 通常のフレーム進行 → フレーム dt > 0（damping）
+      - 同フレーム内の連続呼び出し → 経過実時間 > 0（damping）
+      - 長期放置後の最初の更新 → 0（瞬間スナップで最新位置に）
+
+    バースト抑制は呼び出し側（shot_dispatcher.dispatch）の責務にする。
+    本関数は「dt の意味」だけ責任を持つ。
     """
     effective_fps = max(1.0, fps / max(1.0, fps_base))
     now = time.monotonic()
 
+    # 初回呼び出し判定（リセット後 / .blend 読込直後）
+    is_first_call = scene_name not in _last_frame_seen
     prev_frame = _last_frame_seen.get(scene_name, frame_current)
     prev_time = _last_time_seen.get(scene_name, now)
     _last_frame_seen[scene_name] = frame_current
     _last_time_seen[scene_name] = now
 
+    if is_first_call:
+        # セッション最初はスナップ（現位置を起点に）
+        return 0.0
+
     delta_f = frame_current - prev_frame
 
-    # フレームジャンプ（スクラブ・seek）: スナップ
+    # フレームジャンプ: スナップ
     if abs(delta_f) > 2:
         return 0.0
 
@@ -54,13 +69,12 @@ def compute_dt(scene_name: str, frame_current: int, fps: float, fps_base: float 
 
     # 同一フレーム内: 実時間 dt
     elapsed = now - prev_time
-    if elapsed < 0.001:
-        # 連続呼び出し（depsgraph がバースト発火）→ 0 でスナップ抑止
-        return 0.0
     if elapsed > 1.0:
         # 長時間放置後の最初の更新 → スナップ
         return 0.0
-    return elapsed
+    # 連続バーストでも 0 にしない（呼び出し側でバースト抑制する）。
+    # 0 を返すと damping_alpha が 1.0 (スナップ) になり、ふんわり追従が崩れる。
+    return max(elapsed, 1e-4)
 
 
 def reset_frame_cache() -> None:

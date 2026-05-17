@@ -56,15 +56,21 @@ class KINEMA_OT_remove_workspace(KinemaOperator):
         if ws is None:
             self.report({"INFO"}, "Kinema Workspace は存在しません")
             return {"CANCELLED"}
-        # 他の Workspace に切り替えてから削除
-        if context.window.workspace is ws:
-            for other in bpy.data.workspaces:
-                if other is not ws:
-                    context.window.workspace = other
-                    break
+
+        # Kinema Workspace をアクティブにしないと workspace.delete が効かない場合がある
+        if context.window.workspace is not ws:
+            context.window.workspace = ws
+
+        # Blender 5.x では bpy.data.workspaces.remove() が存在しない。
+        # bpy.ops.workspace.delete を使う必要がある（INVOKE 経由のほうが
+        # アクティブ Workspace を正しく見てくれる）。
         try:
-            bpy.data.workspaces.remove(ws)
-        except Exception as exc:
-            self.report({"ERROR"}, f"Workspace 削除失敗: {exc}")
-            return {"CANCELLED"}
+            bpy.ops.workspace.delete()
+        except Exception:
+            # フォールバック: ID datablock 削除を試みる
+            try:
+                bpy.data.batch_remove(ids=[ws])
+            except Exception as exc:
+                self.report({"ERROR"}, f"Workspace 削除失敗: {exc}")
+                return {"CANCELLED"}
         return {"FINISHED"}

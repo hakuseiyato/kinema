@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [2.0.0-alpha1.5] - 2026-05-16
+
+### Fixed
+- **Workspace 削除失敗**: `bpy.data.workspaces.remove` が Blender 5.x で存在
+  しないため `bpy.ops.workspace.delete()` に切替。フォールバックで
+  `bpy.data.batch_remove` も用意
+- **Quick Start 連打**: 採番ロジックを Operator 内で明示。
+  `bpy.data.collections` と `bpy.data.objects` の両名前空間を見て
+  `Sample_Camera / Sample_Camera_001 / Sample_Camera_002 ...` と確実に採番
+- **スライダー操作で Damping が効かずスナップする**:
+  - `runtime/damping.compute_dt`: バースト連続呼び出しでも 0 を返さなくなった
+    （`max(elapsed, 1e-4)`）。0 を返すと damping_alpha が 1.0 (スナップ) に
+    なって追従が固くなる挙動が直る
+  - 初回呼び出しは引き続き dt=0（スナップ起点）
+  - `runtime/shot_dispatcher.dispatch`: バースト抑制（120Hz 超の連続呼び出しを
+    間引き）を追加し、スライダー連打や depsgraph の連発で `_apply_now` が暴走
+    しないようにした
+  - `frame_change_pre` 経路は `force=True` で抑制を回避
+
 ## [2.0.0-alpha1.4] - 2026-05-16
 
 ### Changed (breaking)

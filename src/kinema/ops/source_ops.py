@@ -36,15 +36,31 @@ class KINEMA_OT_quick_start(KinemaOperator):
     def run(self, context):
         scene = context.scene
         st = scene.kinema
-        root, sample = source_init.quick_start(scene, st.preset_root_name)
-        # 自動でスキャンする
+
+        # Preset Root を確保
+        root = source_init.ensure_preset_root(scene, st.preset_root_name)
+
+        # 採番: Sample_Camera, Sample_Camera_001, Sample_Camera_002, ...
+        # bpy.data.collections と bpy.data.objects 両方の名前空間で被らないように
+        from ..utils import naming
+        existing = set(bpy.data.collections.keys()) | set(bpy.data.objects.keys())
+        unique_name = naming.next_unique_name("Sample_Camera", existing)
+
+        # 新規 Collection + Camera Object をその場で作る
+        sample_coll = bpy.data.collections.new(unique_name)
+        root.children.link(sample_coll)
+        cam_data = bpy.data.cameras.new(unique_name)
+        cam_obj = bpy.data.objects.new(unique_name, cam_data)
+        sample_coll.objects.link(cam_obj)
+
+        # 自動でスキャン
         try:
             bpy.ops.kinema.scan_presets()
         except Exception:
             pass
         self.report(
             {"INFO"},
-            f"Preset Root '{root.name}' にサンプル '{sample.name}' を追加",
+            f"Preset Root '{root.name}' にサンプル '{sample_coll.name}' を追加",
         )
         return {"FINISHED"}
 

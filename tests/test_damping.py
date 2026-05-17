@@ -73,13 +73,24 @@ def test_compute_dt_same_frame_uses_elapsed_time():
     import time as _time
     reset_frame_cache()
     compute_dt("scene", 5, 24.0)
-    # ごく短時間（< 1ms）の連続呼び出し → 0
+    # ごく短時間（< 1ms）の連続呼び出しも非ゼロ（最小値 1e-4）を返す。
+    # バースト抑制は呼び出し側 (shot_dispatcher) の責務に分離した。
     dt_burst = compute_dt("scene", 5, 24.0)
-    assert dt_burst == 0.0
-    # 少し sleep してから呼ぶと実時間 dt > 0
+    assert dt_burst > 0.0
+    # 少し sleep してから呼ぶと実時間 dt > 0.01
     _time.sleep(0.02)
     dt_after_sleep = compute_dt("scene", 5, 24.0)
     assert 0.001 < dt_after_sleep < 1.0
+
+
+def test_compute_dt_long_idle_returns_zero():
+    """長期放置 (>1.0s) 後の最初の呼び出しは dt=0（スナップ）。"""
+    import time as _time
+    reset_frame_cache()
+    compute_dt("scene", 5, 24.0)
+    _time.sleep(1.05)
+    dt = compute_dt("scene", 5, 24.0)
+    assert dt == 0.0
 
 
 if __name__ == "__main__":

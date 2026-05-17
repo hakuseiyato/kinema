@@ -6,6 +6,7 @@ Shot が空の場合は Instance ベースの Follow/LookAt/Noise 適用にフ�
 
 from __future__ import annotations
 
+import time
 from bisect import bisect_right
 from typing import Optional
 
@@ -21,12 +22,21 @@ _in_dispatch = False
 # 前フレーム同 Shot キャッシュ（scene.name -> shot uid）
 _last_shot_per_scene: dict[str, str] = {}
 
+# バースト抑制用: 直近の dispatch 時刻
+_last_dispatch_time: dict[str, float] = {}
+
+# バースト抑制閾値（秒）。これより短い間隔の連続呼び出しは skip し、
+# 前回の damping 結果を保持する。スライダー連打などで dispatch が
+# 秒間数百回呼ばれても安定して追従させる。
+_BURST_MIN_INTERVAL = 1.0 / 120.0  # 120Hz 以上の連打は間引く
+
 
 def reset_state() -> None:
     """`.blend` 読込時に呼ぶ。"""
     global _in_dispatch
     _in_dispatch = False
     _last_shot_per_scene.clear()
+    _last_dispatch_time.clear()
     follow_lookat.reset_frame_cache()
 
 
@@ -129,13 +139,31 @@ def _apply_instances_fallback(scene) -> None:
             noise_mod.apply_noise_frame(cam, inst, frame)
 
 
-def dispatch(scene) -> None:
-    """frame_change_pre から呼ばれるエントリポイント。"""
+def dispatch(scene, force: bool = False) -> None:
+    """frame_change_pre / depsgraph_update_post / update callback から呼ばれる。
+
+    force=False のとき、直近 `_BURST_MIN_INTERVAL` 以内の連続呼び出しは抑制する。
+    スライダー連打や depsgraph の連続発火で毎回 dispatch を走らせると、
+    follow/lookat の damping 計算が「短時間 dt」を繰り返してジャンプ気味になる
+    ことがあるため。
+
+    force=True は frame_change_pre 経由のように「絶対に取りこぼせない」場合に使う。
+    """
     global _in_dispatch
     if _in_dispatch:
         return
     if not hasattr(scene, "kinema"):
         return
+
+    # バースト抑制
+    if not force:
+        now = time.monotonic()
+        last = _last_dispatch_time.get(scene.name, 0.0)
+        if now - last < _BURST_MIN_INTERVAL:
+            return
+        _last_dispatch_time[scene.name] = now
+    else:
+        _last_dispatch_time[scene.name] = time.monotonic()
 
     _in_dispatch = True
     try:

@@ -20,7 +20,8 @@ from . import shot_dispatcher
 
 @persistent
 def kinema_frame_change_pre(scene, depsgraph):  # noqa: ARG001
-    shot_dispatcher.dispatch(scene)
+    # 再生時の取りこぼし防止のため force=True
+    shot_dispatcher.dispatch(scene, force=True)
 
 
 # depsgraph_update_post でも常に dispatch する。
