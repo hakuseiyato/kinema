@@ -24,6 +24,8 @@ def _apply_now(self, context):
     """Instance プロパティが変わった時に即座に Follow/LookAt/Noise を 1 ステップ適用。
 
     再生していない状態でもユーザーがスライダーを動かしたら追従が見えるようにする。
+    Blender 標準の Auto Keyframe (赤丸) が ON のときは、変更されたプロパティに
+    対しても keyframe_insert を呼んで標準動作に合わせる。
     """
     try:
         from ..runtime import instance_dispatcher
@@ -31,6 +33,20 @@ def _apply_now(self, context):
         if instance_dispatcher._in_dispatch:
             return
         instance_dispatcher.dispatch(context.scene)
+
+        # Auto Keyframe 連携: 標準赤丸 ON なら変更プロパティを scene 経由でキー
+        scene = context.scene
+        ts = scene.tool_settings
+        if not ts.use_keyframe_insert_auto:
+            return
+        st = scene.kinema
+        try:
+            idx = list(st.instances).index(self)
+        except ValueError:
+            return
+        # 全 Instance プロパティを 1 度ずつキーする（個別パスを特定するより安全）
+        from ..ops.keyframe_ops import _key_instance_props  # noqa: PLC0415
+        _key_instance_props(scene, idx, scene.frame_current)
     except Exception:
         # update callback は何があっても UI を壊さない
         pass

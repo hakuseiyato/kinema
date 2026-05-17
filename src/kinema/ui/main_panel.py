@@ -129,7 +129,22 @@ class KINEMA_PT_main(bpy.types.Panel):
             cam = refs.safe_object(inst.camera_ref)
             if cam is not None:
                 detail = layout.box()
-                detail.label(text=f"Active: {inst.name}", icon="DOT")
+                head = detail.row(align=True)
+                head.label(text=f"Active: {inst.name}", icon="DOT")
+                # Key 関連ボタン
+                key_row = head.row(align=True)
+                key_row.alignment = "RIGHT"
+                ts = scene.tool_settings
+                key_row.operator(
+                    "kinema.toggle_auto_keyframe",
+                    text="",
+                    icon="REC" if ts.use_keyframe_insert_auto else "RADIOBUT_OFF",
+                    depress=ts.use_keyframe_insert_auto,
+                )
+                key_row.operator("kinema.keyframe_all", text="Key All", icon="KEY_HLT")
+                key_row.operator(
+                    "kinema.rebuild_keying_set", text="", icon="KEYINGSET",
+                )
 
                 # Lens
                 lens_row = detail.row(align=True)

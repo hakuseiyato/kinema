@@ -4,6 +4,31 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1.7] - 2026-05-16
+
+### Added — キーフレーム
+- `ops/keyframe_ops.py` 新規:
+  - `KINEMA_OT_keyframe_all`: Active Instance の Transform / Lens / Shift /
+    DoF / Follow パラメータを現フレームに一括 keyframe_insert
+  - `KINEMA_OT_rebuild_keying_set`: kinema 専用 Keying Set "Kinema Camera"
+    を Active Instance ベースで自動生成・更新。Blender 標準 I キーや Auto
+    Keyframe と統合される
+  - `KINEMA_OT_toggle_auto_keyframe`: Blender 標準の Auto Keyframe (赤丸)
+    を kinema パネルからワンタッチでトグル
+- `data/instance_item._apply_now`: Blender 標準の Auto Keyframe (赤丸) が ON
+  のとき、Instance プロパティ変更時に scene 経由で `kinema.instances[i].xxx`
+  の全パスを `scene.keyframe_insert` で自動キー
+- `ui/main_panel`: Active Instance ヘッダに 3 ボタン
+  - REC アイコン: Auto Keyframe (赤丸) ON/OFF（点灯で ON）
+  - "Key All" (KEY_HLT アイコン): 一括キー
+  - KEYINGSET アイコン: Keying Set 再構築
+
+### 使い方
+- 即席で 1 フレームだけキーを打ちたい → "Key All"
+- 編集中ずっと自動キーしたい → REC ボタンで Auto Keyframe を ON
+- Blender 標準の I キーや Dopesheet と統合したい → Rebuild Keying Set →
+  Keying Set ドロップダウンで "Kinema Camera" を active に
+
 ## [2.0.0-beta1.6] - 2026-05-16
 
 ### Changed (breaking)

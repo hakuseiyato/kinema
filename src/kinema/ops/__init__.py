@@ -12,6 +12,7 @@ from . import (
     handler_ops,
     source_ops,
     diagnostics_ops,
+    keyframe_ops,
 )
 
 
@@ -34,6 +35,9 @@ _CLASSES = (
     handler_ops.KINEMA_OT_disable_cineflow_and_enable_handlers,
     handler_ops.KINEMA_OT_toggle_handlers,
     diagnostics_ops.KINEMA_OT_run_diagnostics,
+    keyframe_ops.KINEMA_OT_keyframe_all,
+    keyframe_ops.KINEMA_OT_rebuild_keying_set,
+    keyframe_ops.KINEMA_OT_toggle_auto_keyframe,
 )
 
 
