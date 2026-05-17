@@ -39,9 +39,20 @@ class KINEMA_UL_instances(bpy.types.UIList):
         # index 番号（同名 Instance でも識別できるように）
         row.label(text=f"#{index + 1}")
 
+        # Enabled (Mute の逆) / Solo / Lock の 3 アイコン
         row.prop(
             item, "enabled",
             text="", icon="HIDE_OFF" if item.enabled else "HIDE_ON",
+            emboss=False,
+        )
+        row.prop(
+            item, "solo",
+            text="", icon="SOLO_ON" if item.solo else "SOLO_OFF",
+            emboss=False,
+        )
+        row.prop(
+            item, "locked",
+            text="", icon="LOCKED" if item.locked else "UNLOCKED",
             emboss=False,
         )
 

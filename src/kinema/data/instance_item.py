@@ -59,6 +59,10 @@ def _apply_now(self, context):
             return
         instance_dispatcher.dispatch(scene)
 
+        # Lock 中は Auto Keyframe 対象外
+        if getattr(self, "locked", False):
+            return
+
         # Auto Keyframe 連携: 標準赤丸 ON なら変更プロパティを scene 経由でキー
         ts = scene.tool_settings
         if not ts.use_keyframe_insert_auto:
@@ -89,12 +93,26 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
         poll=_is_camera_poll,
     )
 
-    # --- ON/OFF ---
+    # --- ON/OFF / Solo / Lock ---
     enabled: BoolProperty(
         name="Enabled",
-        description="ランタイム（Follow/LookAt/Noise）を適用するか",
+        description="ランタイム（Follow/LookAt/Noise）を適用するか。"
+                    "OFF = Mute（dispatcher が skip）",
         default=True,
         update=_apply_now,
+    )
+    solo: BoolProperty(
+        name="Solo",
+        description="ON にした Instance だけを dispatcher が評価する。"
+                    "複数 Instance を solo にすればその全てが評価対象",
+        default=False,
+        update=_apply_now,
+    )
+    locked: BoolProperty(
+        name="Locked",
+        description="編集ロック。UI で Follow/LookAt/Noise スライダーを"
+                    "灰色表示し、Key All / Auto Keyframe からも除外",
+        default=False,
     )
 
     # --- Lens ---

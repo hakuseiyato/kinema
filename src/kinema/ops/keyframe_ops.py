@@ -126,6 +126,9 @@ class KINEMA_OT_keyframe_all(KinemaOperator):
             self.report({"WARNING"}, "Instance が選択されていません")
             return {"CANCELLED"}
         inst = st.instances[idx]
+        if getattr(inst, "locked", False):
+            self.report({"WARNING"}, f"Instance '{inst.name}' is locked. Unlock to key.")
+            return {"CANCELLED"}
         count = insert_keys_for_instance(scene, inst, idx, scene.frame_current)
         self.report({"INFO"}, f"{count} keys inserted @ frame {scene.frame_current}")
         return {"FINISHED"}

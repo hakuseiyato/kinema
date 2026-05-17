@@ -46,36 +46,25 @@ def _resolve_lookat_target(inst):
     return None
 
 
-def _apply_roll(cam_obj, roll_deg: float) -> None:
-    """Y 軸回転（ロール = 視線軸まわりの傾き）をカメラに適用する。
-
-    Track To 制約がカメラの向きを完全に支配している場合、`rotation_euler` への
-    書込みは上書きされて効かない。そのため Track To が無効 / 非存在の時のみ
-    `cam.rotation_euler[2]` を書込んでロールを与える。
-    Track To が有る場合の roll 実装は LookAt 経路の見直しと合わせて将来対応。
-    """
-    if cam_obj is None:
-        return
-    has_active_track_to = any(
-        c.type == "TRACK_TO" and c.influence > 0.001 for c in cam_obj.constraints
-    )
-    if has_active_track_to:
-        # Track To が効いている → roll は上書きされるのでスキップ
-        return
-    try:
-        cam_obj.rotation_euler[2] = math.radians(roll_deg)
-    except Exception:
-        pass
-
-
 def _apply_instances(scene) -> None:
-    """Instance に対して Follow/LookAt/Noise を 1 ステップ適用。"""
+    """Instance に対して Follow/LookAt/Noise を 1 ステップ適用。
+
+    Roll (follow_rot_y) は:
+      - LookAt が active → update_lookat_with_target に roll を渡して
+        rotation 計算の最終段で local Z 軸回転として加える
+      - LookAt が無い → cam.rotation_euler[2] に直接書込
+    """
     st = getattr(scene, "kinema", None)
     if st is None:
         return
     dt = follow_lookat.compute_dt(scene)
     frame = scene.frame_current
-    for inst in st.instances:
+
+    # Solo: solo フラグの立った Instance があればそれだけ評価
+    solo_set = [i for i in st.instances if getattr(i, "solo", False)]
+    pool = solo_set if solo_set else list(st.instances)
+
+    for inst in pool:
         if not inst.enabled:
             continue
         cam = refs.safe_object(inst.camera_ref)
@@ -85,15 +74,20 @@ def _apply_instances(scene) -> None:
             follow_lookat.update_follow(cam, inst, dt)
         # LookAt は明示指定 > Follow Target 自動採用
         effective_lookat = _resolve_lookat_target(inst)
+        roll_deg = float(getattr(inst, "follow_rot_y", 0.0))
         if effective_lookat is not None:
-            follow_lookat.update_lookat_with_target(cam, effective_lookat, inst.lookat_damping, dt)
+            follow_lookat.update_lookat_with_target(
+                cam, effective_lookat, inst.lookat_damping, dt, roll_deg=roll_deg,
+            )
         else:
             # 何も注視するものがない → 既存の Proxy を掃除
             follow_lookat.cleanup_lookat_proxy(cam)
-        # Y 軸回転 (ロール) を最後に適用（Track To 後のカメラ視線軸を回す）
-        roll_deg = float(getattr(inst, "follow_rot_y", 0.0))
-        if abs(roll_deg) > 0.001:
-            _apply_roll(cam, roll_deg)
+            # LookAt 無し時の Roll: rotation_euler に直接書く
+            if abs(roll_deg) > 0.001:
+                try:
+                    cam.rotation_euler[2] = math.radians(roll_deg)
+                except Exception:
+                    pass
         if inst.noise_enabled:
             noise_mod.apply_noise_frame(cam, inst, frame)
 

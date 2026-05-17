@@ -18,6 +18,24 @@ from ..config import constants as C
 from . import preset_item, instance_item
 
 
+def _on_active_instance_changed(self, context):
+    """Active Instance 切替時、kinema Keying Set があれば自動 Rebuild。
+
+    切替前後でカメラ・Instance プロパティの path が変わるので、
+    既存の Keying Set を最新の Active に追従させる。
+    """
+    try:
+        from ..ops.keyframe_ops import KEYING_SET_LABEL  # noqa: PLC0415
+        scene = context.scene
+        ks = scene.keying_sets.get(KEYING_SET_LABEL)
+        if ks is None:
+            return  # 生成されていなければ何もしない
+        # 既存があれば再構築（Operator 呼出で安全に処理）
+        bpy.ops.kinema.rebuild_keying_set("INVOKE_DEFAULT")
+    except Exception:
+        pass
+
+
 class KinemaSceneSettings(bpy.types.PropertyGroup):
     # --- Source roots ---
     preset_root_name: StringProperty(
@@ -37,7 +55,11 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
 
     # --- Instance 一覧 ---
     instances: CollectionProperty(type=instance_item.KinemaInstanceItem)
-    active_instance_index: IntProperty(name="Active Instance", default=0)
+    active_instance_index: IntProperty(
+        name="Active Instance",
+        default=0,
+        update=_on_active_instance_changed,
+    )
 
     # --- 動作 ---
     auto_preview_on_select: BoolProperty(

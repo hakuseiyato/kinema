@@ -60,6 +60,8 @@ class KINEMA_OT_duplicate_instance(KinemaOperator):
         inst.collection_ref = new_coll
         inst.camera_ref = new_cam
         inst.enabled = src.enabled
+        inst.solo = src.solo
+        inst.locked = src.locked
         inst.lens_mm = src.lens_mm
 
         # Follow / LookAt / Noise パラメータをコピー

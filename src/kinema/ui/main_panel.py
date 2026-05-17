@@ -129,8 +129,12 @@ class KINEMA_PT_main(bpy.types.Panel):
             cam = refs.safe_object(inst.camera_ref)
             if cam is not None:
                 detail = layout.box()
+                # Lock 中は中身を編集不可（灰色）
+                detail.enabled = not getattr(inst, "locked", False)
                 head = detail.row(align=True)
-                head.label(text=f"Active: {inst.name}", icon="DOT")
+                head.enabled = True  # ヘッダは常に有効
+                lock_icon = "LOCKED" if inst.locked else "DOT"
+                head.label(text=f"Active: {inst.name}", icon=lock_icon)
                 # Key 関連ボタン
                 key_row = head.row(align=True)
                 key_row.alignment = "RIGHT"
@@ -261,6 +265,13 @@ class KINEMA_PT_main(bpy.types.Panel):
                     noise_col.prop(inst, "noise_seed")
             else:
                 layout.label(text="アクティブ Instance にカメラがありません", icon="ERROR")
+
+        # --- Import / Export ---
+        io_box = layout.box()
+        io_box.label(text="Import / Export", icon="FILE")
+        io_row = io_box.row(align=True)
+        io_row.operator("kinema.export_json", text="Export JSON", icon="EXPORT")
+        io_row.operator("kinema.import_json", text="Import JSON", icon="IMPORT")
 
         # --- Diagnostics ---
         diag_box = layout.box()
