@@ -28,10 +28,10 @@ class KINEMA_OT_init_preset_root(KinemaOperator):
 
 
 class KINEMA_OT_quick_start(KinemaOperator):
-    """ワンクリック初期化：Preset Root + サンプルプリセット 1 件 + 自動スキャン。"""
+    """ワンクリック初期化（押すたびに新サンプル Camera を 1 件追加）。"""
     bl_idname = "kinema.quick_start"
-    bl_label = "Quick Start"
-    bl_description = "Preset Root とサンプルカメラプリセットを生成して即スキャン"
+    bl_label = "Quick Start (+1 Sample)"
+    bl_description = "Preset Root を確保し、毎回新しいサンプル Camera を追加してスキャン"
 
     def run(self, context):
         scene = context.scene
@@ -42,10 +42,10 @@ class KINEMA_OT_quick_start(KinemaOperator):
             bpy.ops.kinema.scan_presets()
         except Exception:
             pass
-        msg = f"Preset Root '{root.name}' 準備完了"
-        if sample is not None:
-            msg += f" + サンプル '{sample.name}' を追加"
-        self.report({"INFO"}, msg)
+        self.report(
+            {"INFO"},
+            f"Preset Root '{root.name}' にサンプル '{sample.name}' を追加",
+        )
         return {"FINISHED"}
 
 

@@ -119,22 +119,24 @@ def capture_view_as_new_preset(
 def quick_start(
     scene,
     root_name: Optional[str] = None,
-) -> tuple[bpy.types.Collection, Optional[bpy.types.Collection]]:
-    """ワンクリック初期化。
+) -> tuple[bpy.types.Collection, bpy.types.Collection]:
+    """ワンクリック初期化（毎回新規サンプルを追加）。
 
-    1. Preset Root を作成（既存ならそのまま）
-    2. 空の root の場合のみ、サンプル `Sample_Camera` プリセットを 1 件作って
-       新規 Camera を入れる
-    3. root とサンプルコレクション（または None）のタプルを返す
+    動作:
+      1. Preset Root を作成（既存ならそのまま）
+      2. **毎回** 新しいサンプル Camera プリセットを 1 件追加（採番付き）
+      3. root と新規サブコレクションを返す
 
-    既に root に子がある場合はサンプル生成しない（破壊しない）。
+    旧仕様の「root に子があれば何もしない」は撤廃。連打しても増えるようにする
+    （Yato さん要望）。
     """
     root = ensure_preset_root(scene, root_name)
-    if list(root.children):
-        return root, None
-    sample = bpy.data.collections.new("Sample_Camera")
+    # 既存名と被らない採番
+    existing = set(bpy.data.collections.keys()) | set(bpy.data.objects.keys())
+    name = naming.next_unique_name("Sample_Camera", existing)
+    sample = bpy.data.collections.new(name)
     root.children.link(sample)
-    cam_data = bpy.data.cameras.new("Sample_Camera")
-    cam_obj = bpy.data.objects.new("Sample_Camera", cam_data)
+    cam_data = bpy.data.cameras.new(name)
+    cam_obj = bpy.data.objects.new(name, cam_data)
     sample.objects.link(cam_obj)
     return root, sample

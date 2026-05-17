@@ -86,7 +86,8 @@ class KINEMA_PT_main(bpy.types.Panel):
         # --- Presets ---
         preset_box = layout.box()
         row = preset_box.row(align=True)
-        row.label(text=f"Presets ({len(st.presets)})", icon="CAMERA_DATA")
+        # 新仕様: 各 Camera オブジェクトを 1 Preset として扱う
+        row.label(text=f"Presets ({len(st.presets)} cameras)", icon="OUTLINER_OB_CAMERA")
         row.operator("kinema.scan_presets", text="", icon="FILE_REFRESH")
 
         preset_box.template_list(

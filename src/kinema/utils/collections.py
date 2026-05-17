@@ -56,16 +56,44 @@ def find_first_camera(coll: bpy.types.Collection) -> Optional[bpy.types.Object]:
 # Preset 走査
 # ---------------------------------------------------------------------------
 
-def _read_collection_meta(coll) -> dict:
-    """Collection のカスタムプロパティから kinema 情報を読む。"""
-    return {
-        "tags": str(prop_utils.safe_get(coll, C.KEY_TAGS, "") or ""),
-        "has_anim": bool(prop_utils.safe_get(coll, C.KEY_HAS_ANIM, False)),
-        "default_lens": prop_utils.safe_get_typed(coll, C.KEY_DEFAULT_LENS, float, 0.0),
-        "preview_end": prop_utils.safe_get_typed(coll, C.KEY_PREVIEW_END, int, 0),
-        "follow_target": str(prop_utils.safe_get(coll, C.KEY_FOLLOW_TARGET, "") or ""),
-        "lookat_target": str(prop_utils.safe_get(coll, C.KEY_LOOKAT_TARGET, "") or ""),
+def _read_object_meta(obj) -> dict:
+    """Camera オブジェクト（または所属コレクション）からカスタムプロパティを読む。"""
+    meta = {
+        "tags": "",
+        "has_anim": False,
+        "default_lens": 0.0,
+        "preview_end": 0,
+        "follow_target": "",
+        "lookat_target": "",
     }
+    # Camera obj 自体に書かれていたら優先
+    for src in (obj, getattr(obj, "data", None)):
+        if src is None:
+            continue
+        for key, field, conv in (
+            (C.KEY_TAGS,          "tags",          lambda v: str(v)),
+            (C.KEY_HAS_ANIM,      "has_anim",      lambda v: bool(v)),
+            (C.KEY_DEFAULT_LENS,  "default_lens",  lambda v: float(v)),
+            (C.KEY_PREVIEW_END,   "preview_end",   lambda v: int(v)),
+            (C.KEY_FOLLOW_TARGET, "follow_target", lambda v: str(v)),
+            (C.KEY_LOOKAT_TARGET, "lookat_target", lambda v: str(v)),
+        ):
+            val = prop_utils.safe_get(src, key, None)
+            if val is not None:
+                try:
+                    meta[field] = conv(val)
+                except Exception:
+                    pass
+    # アニメーション有無の動的検出
+    if not meta["has_anim"]:
+        for src in (obj, getattr(obj, "data", None), obj.parent):
+            if src is None:
+                continue
+            adata = getattr(src, "animation_data", None)
+            if adata is not None and adata.action is not None:
+                meta["has_anim"] = True
+                break
+    return meta
 
 
 _EMPTY_META = {
@@ -75,64 +103,61 @@ _EMPTY_META = {
 
 
 def scan_presets(scene, preset_root_name: str) -> list[dict]:
-    """Preset Root 配下を **再帰スキャン**し、Camera を含むコレクションを Preset として返す。
+    """Preset Root 配下の **全 Camera オブジェクト** を Preset として返す。
 
-    - 階層は Outliner の構造をそのまま反映する
-    - 親コレクションに Camera が無ければそれは「グループ」として `parent_path` を持つ
-      子 Preset から参照される（UI でインデント表示する）
-    - `_` 分割やヒューリスティックなグループ化は行わない（Yato さん要望）
+    設計変更（Yato さん要望）:
+      - 「コレクション = Preset」を廃止
+      - 「Camera オブジェクト 1 つ = Preset 1 件」に統一
+      - コレクション階層は所属を表す「グループ」として表示にのみ使う
+      - 同じコレクションに複数 Camera があれば全部 Preset として一覧化
 
-    返値の各エントリのキー:
-      name        : コレクション名そのまま
-      depth       : Preset Root 直下を 0 とした階層深さ
-      parent_path : 親コレクション名のリスト（root を除く）
-      group       : "/".join(parent_path)（UI 表示用、ルート直下なら ""）
-      short_name  : name と同じ（互換のため残す）
-      camera_name : 代表カメラ名
-      meta        : カスタムプロパティから読んだ辞書
+    返値:
+      name        : Camera オブジェクト名
+      depth       : 階層深さ（root 直下なら 0）
+      parent_path : 所属コレクション名のリスト（root を除く）
+      group       : "/".join(parent_path)
+      short_name  : name と同じ
+      camera_name : name と同じ
+      meta        : カメラから読んだメタ情報
     """
     root = get_preset_root(scene, preset_root_name)
     if root is None:
         return []
     result: list[dict] = []
-    _walk_presets(root, parent_path=[], depth=-1, result=result, skip_self=True)
+    _walk_cameras(root, parent_path=[], depth=-1, result=result, skip_self=True)
+    # group + name でソート
+    result.sort(key=lambda x: (x["group"], x["name"]))
     return result
 
 
-def _walk_presets(coll, parent_path, depth, result, skip_self=False):
-    """coll を再帰的に走査して Camera を含むコレクションを result に追記。
+def _walk_cameras(coll, parent_path, depth, result, skip_self=False):
+    """coll を再帰的に走査して、各 Camera オブジェクトを result に追記。"""
+    # root 自身は parent_path に追加しない（skip_self）
+    current_path = parent_path if skip_self else parent_path + [coll.name]
+    current_depth = depth if skip_self else depth + 1
 
-    skip_self=True で root 自身は Preset として登録しない（ルート用フラグ）。
-    """
-    # 直接の objects に Camera があるか
-    has_direct_camera = any(obj.type == "CAMERA" for obj in coll.objects)
-    cam = find_first_camera(coll) if has_direct_camera else None
-
-    if has_direct_camera and not skip_self:
+    # この coll の直下にある Camera を Preset として登録
+    for obj in coll.objects:
+        if obj.type != "CAMERA":
+            continue
         result.append({
-            "name": coll.name,
-            "depth": depth,
-            "parent_path": list(parent_path),
-            "group": "/".join(parent_path),
-            "short_name": coll.name,
-            "camera_name": cam.name if cam else "",
-            "meta": _read_collection_meta(coll),
+            "name": obj.name,
+            "depth": current_depth,
+            "parent_path": list(current_path),
+            "group": "/".join(current_path),
+            "short_name": obj.name,
+            "camera_name": obj.name,
+            "meta": _read_object_meta(obj),
         })
 
-    # Camera を含むコレクションは Preset 確定とみなし、その内側は再帰しない。
-    # （プリセット内部のサブコレクションは「補助オブジェクトのまとまり」と解釈）
-    if has_direct_camera and not skip_self:
-        return
-
-    # Camera を含まないコレクション、または root 自身は「グループ」として子を辿る
-    next_path = parent_path if skip_self else parent_path + [coll.name]
+    # 子コレクションを再帰
     for child in coll.children:
-        _walk_presets(child, next_path, depth + 1, result, skip_self=False)
+        _walk_cameras(child, current_path, current_depth, result, skip_self=False)
 
 
-# 旧 API 互換（main_panel から呼ばれていたら）
+# 旧 API 互換
 def scan_presets_grouped(scene, preset_root_name, min_group_size=2):  # noqa: ARG001
-    """互換シム。新仕様では re-encode 不要なので scan_presets と同じものを返す。"""
+    """互換シム。"""
     return scan_presets(scene, preset_root_name)
 
 
@@ -155,6 +180,72 @@ def duplicate_collection(
     new_coll = _copy_recursive(source, parent, name)
     cam = find_first_camera(new_coll)
     return new_coll, cam
+
+
+def duplicate_camera_as_instance(
+    cam_obj: bpy.types.Object,
+    parent_coll: bpy.types.Collection,
+    root_scope: Optional[bpy.types.Collection],
+    base_name: Optional[str] = None,
+) -> tuple[bpy.types.Collection, bpy.types.Object]:
+    """Camera オブジェクト + 関連オブジェクト（親チェーン・constraint target）を
+    複製し、parent_coll の配下に新規サブコレクションを作って入れる。
+
+    Cineflow の `duplicate_camera_preset` を移植したもの。Preset Root を
+    Camera オブジェクト単位で扱う新仕様で、Load の中核処理になる。
+
+    Args:
+        cam_obj: 複製元の Camera。Preset Root 配下にあること。
+        parent_coll: 新規サブコレクションを link する先（通常 Instances Root）。
+        root_scope: 関連オブジェクト探索の範囲制限（通常 Preset Root）。None で
+            無制限（cam_obj に到達可能な全オブジェクト）。
+        base_name: 新規サブコレクションの名前ベース。None で cam_obj.name を使う。
+
+    Returns:
+        (新規サブコレクション, 複製された Camera オブジェクト)
+    """
+    if cam_obj is None or cam_obj.type != "CAMERA":
+        raise ValueError("duplicate_camera_as_instance: cam_obj は Camera 必須")
+
+    name_base = base_name or cam_obj.name
+    existing = set(bpy.data.collections.keys())
+    new_coll_name = naming.next_unique_name(name_base, existing)
+    new_coll = bpy.data.collections.new(new_coll_name)
+    parent_coll.children.link(new_coll)
+
+    # 関連オブジェクト収集（範囲制限あり）
+    in_scope = set(root_scope.all_objects) if root_scope is not None else None
+    related: set = {cam_obj}
+    p = cam_obj.parent
+    while p is not None and (in_scope is None or p in in_scope):
+        related.add(p)
+        p = p.parent
+    for obj in list(related):
+        for con in obj.constraints:
+            tgt = getattr(con, "target", None)
+            if tgt is not None and (in_scope is None or tgt in in_scope):
+                related.add(tgt)
+
+    # 複製 + マップ作成
+    obj_map: dict = {}
+    for orig in related:
+        new_obj = orig.copy()
+        if orig.data is not None:
+            new_obj.data = orig.data.copy()
+        new_coll.objects.link(new_obj)
+        obj_map[orig] = new_obj
+
+    # 親リワイヤ + constraint target リワイヤ
+    for orig, dup in obj_map.items():
+        if orig.parent is not None and orig.parent in obj_map:
+            dup.parent = obj_map[orig.parent]
+        for con in dup.constraints:
+            tgt = getattr(con, "target", None)
+            if tgt is not None and tgt in obj_map:
+                con.target = obj_map[tgt]
+
+    new_cam = obj_map[cam_obj]
+    return new_coll, new_cam
 
 
 def _copy_recursive(

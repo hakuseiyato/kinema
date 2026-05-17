@@ -1,8 +1,6 @@
 """Preset UIList。
 
-Outliner の階層構造をそのまま反映する設計に変更（旧 `_` 分割グループは撤廃）。
-親コレクションに Camera が無い場合、その親が "グループ" として扱われ、子は
-インデント表示される。
+新仕様: Camera オブジェクト 1 つ = 1 行。所属コレクション階層を group 列で表示。
 """
 
 from __future__ import annotations
@@ -11,29 +9,27 @@ import bpy
 
 
 class KINEMA_UL_presets(bpy.types.UIList):
-    """プリセット一覧 UIList。"""
+    """プリセット一覧 UIList（Camera ベース）。"""
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):  # noqa: ARG002
         row = layout.row(align=True)
 
-        # 階層インデント: group ("Hero/Subgroup") のスラッシュ数だけ空アイコンを出す
+        # 階層インデント
         depth = item.group.count("/") + 1 if item.group else 0
         for _ in range(depth):
             row.label(text="", icon="BLANK1")
 
-        # 名前
-        row.label(text=item.name, icon="CAMERA_DATA")
+        # メイン: Camera オブジェクト名
+        row.label(text=item.name, icon="OUTLINER_OB_CAMERA")
 
-        # 親パス表示（深さ > 0 のときのみ）
+        # 所属コレクション（最も近い親）
         if item.group:
             parent_label = item.group.split("/")[-1]
-            row.label(text=f"in {parent_label}")
+            row.label(text=f"in {parent_label}", icon="OUTLINER_COLLECTION")
 
         # 右寄せ補助情報
         right = row.row(align=True)
         right.alignment = "RIGHT"
-        if item.camera_name and item.camera_name != item.name:
-            right.label(text=item.camera_name, icon="OUTLINER_OB_CAMERA")
         if item.has_anim:
             right.label(text="", icon="ANIM")
         if item.tags:

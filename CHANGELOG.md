@@ -4,6 +4,35 @@
 
 ## [Unreleased]
 
+## [2.0.0-alpha1.4] - 2026-05-16
+
+### Changed (breaking)
+- **Preset 単位を「Camera オブジェクト」に変更**
+  - 旧: コレクション = Preset、最初の Camera が代表
+  - 新: 各 Camera オブジェクトが 1 Preset。コレクション階層は所属を表す
+    "group" として表示にのみ使う
+  - 1 つのコレクションに複数の Camera を置いてもすべて Preset として認識される
+- `utils/collections.scan_presets`: Preset Root 配下の全 Camera を再帰収集
+- `utils/collections.duplicate_camera_as_instance` を新設。Camera + 親チェーン
+  + constraint target を最小範囲で複製（cineflow の duplicate_camera_preset 移植）
+- `ops/preset_ops.load_preset`: 新 duplicate を使用、`sel.name` は Camera 名
+- `utils/source_init.quick_start`: 毎回新サンプル Camera を採番付きで追加
+  （旧: root に子があれば何もしない、を撤廃）
+
+### Fixed
+- **Damping が再生中に効かない問題**
+  - `runtime/damping.compute_dt` をフレーム差 + 実時間 dt のハイブリッドに
+  - 再生中の自然な進行: フレーム差で damping
+  - 再生中にターゲットを動かす: 同フレーム内の実時間 dt で damping
+  - 停止中にターゲットを動かす: 実時間 dt で damping（ふんわり追従）
+  - 長期放置後の最初の更新: dt=0 でスナップ
+- `runtime/handlers.kinema_depsgraph_update_post`: 再生中 skip を撤回（compute_dt
+  側が自動でスナップ/Damping を判定するため）
+
+### UI
+- `ui/presets_view`: Camera ベース表示に変更（アイコンを Camera 中心に）
+- `ui/main_panel`: Presets 行に "N cameras" 表記
+
 ## [2.0.0-alpha1.3] - 2026-05-16
 
 ### Changed

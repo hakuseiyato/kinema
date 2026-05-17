@@ -43,10 +43,10 @@ class KINEMA_OT_scan_presets(KinemaOperator):
 
 
 class KINEMA_OT_load_preset(KinemaOperator):
-    """選択中のプリセットを Instances Root に複製してロードする。"""
+    """選択中のプリセット（Camera オブジェクト）を Instances Root に複製。"""
     bl_idname = "kinema.load_preset"
     bl_label = "Load Selected Preset"
-    bl_description = "選択中のプリセットコレクションを複製して Instance として追加"
+    bl_description = "選択中の Camera プリセットを関連オブジェクトごと複製して Instance に追加"
 
     def run(self, context):
         scene = context.scene
@@ -62,27 +62,32 @@ class KINEMA_OT_load_preset(KinemaOperator):
             self.report({"WARNING"}, "グループヘッダは Load できません")
             return {"CANCELLED"}
 
-        source = bpy.data.collections.get(sel.name)
-        if source is None:
-            self.report({"ERROR"}, f"プリセットコレクションが見つかりません: {sel.name}")
+        # 新仕様: sel.name は Camera オブジェクト名
+        src_cam = bpy.data.objects.get(sel.name)
+        if src_cam is None or src_cam.type != "CAMERA":
+            self.report({"ERROR"}, f"Camera オブジェクトが見つかりません: {sel.name}")
             return {"CANCELLED"}
 
+        preset_root = kn_collections.get_preset_root(scene, st.preset_root_name)
         instances_root = kn_collections.get_or_create_instances_root(
             scene, st.instances_root_name,
         )
-        new_coll, cam = kn_collections.duplicate_collection(
-            source, instances_root, base_name=sel.name,
-        )
+        try:
+            new_coll, new_cam = kn_collections.duplicate_camera_as_instance(
+                src_cam, instances_root,
+                root_scope=preset_root,
+                base_name=src_cam.name,
+            )
+        except Exception as exc:
+            self.report({"ERROR"}, f"複製失敗: {exc}")
+            return {"CANCELLED"}
 
-        # 安全チェック: 既存 Instance と同じ collection_ref を指していないか
-        # ※ 通常は duplicate_collection が必ず新規 collection を返すので発生しないが、
-        #    万一の時はロールバックせず警告のみに留める（過剰発動を避ける）。
+        # 安全チェック: 万一既存 Instance と同じ collection を指していたら警告
         for existing in st.instances:
             if refs.safe_collection(existing.collection_ref) is new_coll:
                 self.report(
                     {"WARNING"},
-                    f"既存 Instance が同じ collection を参照 ({new_coll.name}). "
-                    "UI の DUP マークで確認してください",
+                    f"既存 Instance が同じ collection を参照 ({new_coll.name})",
                 )
                 break
 
@@ -90,10 +95,10 @@ class KINEMA_OT_load_preset(KinemaOperator):
         inst.name = new_coll.name
         inst.source_preset = sel.name
         inst.collection_ref = new_coll
-        inst.camera_ref = cam
-        if cam is not None and cam.data is not None:
-            inst.lens_mm = float(cam.data.lens)
+        inst.camera_ref = new_cam
+        if new_cam is not None and new_cam.data is not None:
+            inst.lens_mm = float(new_cam.data.lens)
 
         st.active_instance_index = len(st.instances) - 1
-        self.report({"INFO"}, f"Loaded: {new_coll.name}")
+        self.report({"INFO"}, f"Loaded: {new_coll.name} ({new_cam.name})")
         return {"FINISHED"}

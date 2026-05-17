@@ -46,8 +46,9 @@ def test_formula_consistency():
 
 def test_compute_dt_normal_playback():
     reset_frame_cache()
-    # 1 フレーム進んだ → 24 fps なら ~1/24 s
-    assert compute_dt("test", 10, 24.0) == 0
+    # 初回呼び出し: フレームは前回 = 今回扱い、実時間も初回 → dt=0
+    assert compute_dt("test", 10, 24.0) == 0.0
+    # 1 フレーム進んだ → フレーム差で 1/24 s
     dt = compute_dt("test", 11, 24.0)
     assert abs(dt - 1 / 24) < 1e-9
 
@@ -64,7 +65,21 @@ def test_compute_dt_reset_clears():
     compute_dt("scene", 5, 24.0)
     reset_frame_cache()
     # リセット後の最初の呼び出しは dt=0
-    assert compute_dt("scene", 5, 24.0) == 0
+    assert compute_dt("scene", 5, 24.0) == 0.0
+
+
+def test_compute_dt_same_frame_uses_elapsed_time():
+    """同一フレームで連続呼び出し時に実時間 dt が返ること（停止中の追従シナリオ）。"""
+    import time as _time
+    reset_frame_cache()
+    compute_dt("scene", 5, 24.0)
+    # ごく短時間（< 1ms）の連続呼び出し → 0
+    dt_burst = compute_dt("scene", 5, 24.0)
+    assert dt_burst == 0.0
+    # 少し sleep してから呼ぶと実時間 dt > 0
+    _time.sleep(0.02)
+    dt_after_sleep = compute_dt("scene", 5, 24.0)
+    assert 0.001 < dt_after_sleep < 1.0
 
 
 if __name__ == "__main__":
