@@ -1,13 +1,17 @@
 """Follow / LookAt の更新ロジック。
 
-旧 cineflow `runtime.py:_update_follow / _update_lookat` を移植。
-設計ポイント（cineflow 由来）:
-  - Follow は被写体の **後方** に置く
+旧 cineflow `runtime.py:_update_follow / _update_lookat` を移植 + 拡張。
+設計ポイント:
+  - Follow は **球面座標 (yaw / pitch / distance)** で target の周りに配置
+    - yaw=0 が target.matrix_world の +Y（正面）、180 で背後（旧 TPS 動作）
+    - pitch で見下ろし / 見上げ
   - LookAt は中継 Empty (LookatProxy) を介してラグ追従
   - Damping は fps 非依存 `alpha = 1 - exp(-dt/tau)`（damping.py に分離）
 """
 
 from __future__ import annotations
+
+import math
 
 import bpy
 from mathutils import Vector
@@ -41,28 +45,56 @@ def compute_dt(scene) -> float:
 # ---------------------------------------------------------------------------
 
 def update_follow(cam_obj, params, dt: float) -> None:
-    """カメラを follow_target の **後方** に追従させる。
+    """カメラを follow_target の周りに **球面座標** で配置する。
 
-    params に以下の属性を要求する（ShotClip / InstanceItem 双方で共通）:
-      follow_target, follow_distance, follow_height, follow_side, follow_damping
+    params に以下の属性を要求:
+      follow_target, follow_distance, follow_yaw, follow_pitch,
+      follow_height, follow_side, follow_damping
+
+    球面座標 (target ローカル空間):
+      - yaw=0   → +Y 方向 (target の正面、こちら向き)
+      - yaw=90  → +X 方向 (target の右)
+      - yaw=180 → -Y 方向 (target の背後、旧 TPS の挙動)
+      - yaw=-90 → -X 方向 (target の左)
+      - pitch>0 → 上から見下ろし
+      - pitch<0 → 下から見上げ
     """
     target = refs.safe_object(getattr(params, "follow_target", None))
     if target is None or cam_obj is None:
         return
 
-    dist = params.follow_distance
-    height = params.follow_height
-    side = params.follow_side
+    dist = float(params.follow_distance)
+    yaw_rad = math.radians(float(getattr(params, "follow_yaw", 0.0)))
+    pitch_rad = math.radians(float(getattr(params, "follow_pitch", 0.0)))
+    height = float(params.follow_height)
+    side = float(params.follow_side)
 
-    tmat = target.matrix_world
-    forward = Vector((tmat[0][1], tmat[1][1], tmat[2][1]))  # +Y 軸
-    right = Vector((tmat[0][0], tmat[1][0], tmat[2][0]))    # +X 軸
+    # target ローカル空間での方向ベクトル
+    cos_pitch = math.cos(pitch_rad)
+    dir_local = Vector((
+        math.sin(yaw_rad) * cos_pitch,
+        math.cos(yaw_rad) * cos_pitch,
+        math.sin(pitch_rad),
+    ))
 
-    # 「後方」は -forward 方向
-    ideal = (target.matrix_world.translation
-             - forward * dist
-             + Vector((0.0, 0.0, height))
-             + right * side)
+    # target の rotation 部分でワールド空間に変換
+    rot_3x3 = target.matrix_world.to_3x3()
+    dir_world = rot_3x3 @ dir_local
+
+    # 接線右方向（カメラ視線と直交、ワールド上向きと外積）
+    world_up = Vector((0.0, 0.0, 1.0))
+    if abs(dir_world.dot(world_up)) > 0.999:
+        # 真上/真下を向いている場合は別の基準で右方向を決める
+        tangent_right = (rot_3x3 @ Vector((1.0, 0.0, 0.0))).normalized()
+    else:
+        tangent_right = dir_world.cross(world_up).normalized()
+
+    ideal = (
+        target.matrix_world.translation
+        + dir_world * dist
+        + world_up * height
+        + tangent_right * side
+    )
 
     alpha = damping_alpha(params.follow_damping, dt)
     if alpha >= 0.999:

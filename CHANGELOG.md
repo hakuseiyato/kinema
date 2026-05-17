@@ -4,6 +4,29 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1.4] - 2026-05-16
+
+### Added (breaking)
+- **全方位 Follow（球面座標）**: Follow Target の周りを Yaw / Pitch で
+  自由に位置決めできるよう設計変更
+  - `data/instance_item`: `follow_yaw` (deg, default=0=正面) / `follow_pitch`
+    (deg, default=0=水平) を追加
+  - `runtime/follow_lookat.update_follow`: target.matrix_world を基準にした
+    球面座標 (yaw, pitch, distance) でカメラ位置を計算。world up と直交する
+    接線ベクトルで side offset を算出
+  - 旧「`-forward * dist` (TPS 後方固定)」を撤回。新デフォルトは yaw=0 で
+    target の正面 (+Y) に配置 → 立ち絵の正面撮影が自然に成立
+- **方向プリセットボタン** (`KINEMA_OT_set_follow_angle`):
+  Front / Right / Back / Left / Top↓ / Bot↑ / FrtUp / FrtDn の 8 ボタン
+  - Yaw / Pitch をワンクリックで切替
+- UI: Follow セクションに Orbit ボックス（Yaw / Pitch + プリセット）追加
+- Duplicate Operator: yaw / pitch もコピー対象に
+
+### Notes
+- 旧 Instance の follow_height デフォルトは 1.5 だったが、新デフォルトは
+  0.0（球面座標で位置決定するため、Z 軸オフセットは「微調整」に格下げ）
+- `yaw=180` にすれば旧 TPS 後方追従と互換挙動になる
+
 ## [2.0.0-beta1.3] - 2026-05-16
 
 ### Added

@@ -26,6 +26,7 @@ _CLASSES = (
     instance_ops.KINEMA_OT_duplicate_instance,
     instance_ops.KINEMA_OT_unload_instance,
     instance_ops.KINEMA_OT_preview_instance,
+    instance_ops.KINEMA_OT_set_follow_angle,
     instance_ops.KINEMA_OT_apply_lens,
     instance_ops.KINEMA_OT_refresh_instances,
     workspace_ops.KINEMA_OT_create_workspace,

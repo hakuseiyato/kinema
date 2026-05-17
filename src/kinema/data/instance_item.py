@@ -71,9 +71,37 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
         name="Follow Target", type=bpy.types.Object, poll=_is_object_poll,
         update=_apply_now,
     )
-    follow_distance: FloatProperty(name="Distance", default=5.0, min=0.0, update=_apply_now)
-    follow_height: FloatProperty(name="Height", default=1.5, update=_apply_now)
-    follow_side: FloatProperty(name="Side Offset", default=0.0, update=_apply_now)
+    follow_distance: FloatProperty(
+        name="Distance", description="target からの半径距離",
+        default=5.0, min=0.0, update=_apply_now,
+    )
+    # 全方位カメラ操作: 球面座標で target の周りを自由に回せる
+    follow_yaw: FloatProperty(
+        name="Yaw (deg)",
+        description=(
+            "target を中心とした水平角（度）。"
+            "0=正面, 90=右, 180=背後, -90=左"
+        ),
+        default=0.0, min=-360.0, max=360.0,
+        update=_apply_now,
+    )
+    follow_pitch: FloatProperty(
+        name="Pitch (deg)",
+        description=(
+            "target を中心とした仰角（度）。"
+            "0=水平, 正値=見下ろし（上から）, 負値=見上げ（下から）"
+        ),
+        default=0.0, min=-89.0, max=89.0,
+        update=_apply_now,
+    )
+    follow_height: FloatProperty(
+        name="Height", description="ワールド Z 軸方向の追加オフセット",
+        default=0.0, update=_apply_now,
+    )
+    follow_side: FloatProperty(
+        name="Side Offset", description="ビュー横方向の追加オフセット",
+        default=0.0, update=_apply_now,
+    )
     follow_damping: FloatProperty(name="Follow Damping", default=0.3, min=0.0, max=1.0, update=_apply_now)
     follow_auto_lookat: BoolProperty(
         name="Auto Look at Follow Target",

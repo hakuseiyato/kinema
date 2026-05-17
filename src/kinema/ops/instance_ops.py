@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import bpy
-from bpy.props import IntProperty, FloatProperty
+from bpy.props import IntProperty, FloatProperty  # noqa: F401
 
 from ..utils import collections as kn_collections
 from ..utils import refs
@@ -65,6 +65,8 @@ class KINEMA_OT_duplicate_instance(KinemaOperator):
         # Follow / LookAt / Noise パラメータをコピー
         inst.follow_target = src.follow_target
         inst.follow_distance = src.follow_distance
+        inst.follow_yaw = src.follow_yaw
+        inst.follow_pitch = src.follow_pitch
         inst.follow_height = src.follow_height
         inst.follow_side = src.follow_side
         inst.follow_damping = src.follow_damping
@@ -133,6 +135,26 @@ class KINEMA_OT_preview_instance(KinemaOperator):
             self.report({"WARNING"}, "カメラが見つかりません")
             return {"CANCELLED"}
         scene.camera = cam
+        return {"FINISHED"}
+
+
+class KINEMA_OT_set_follow_angle(KinemaOperator):
+    """選択中 Instance の follow_yaw / follow_pitch をプリセット値に設定。"""
+    bl_idname = "kinema.set_follow_angle"
+    bl_label = "Set Follow Angle"
+    bl_description = "Yaw / Pitch をワンクリックでプリセット角度に設定"
+
+    yaw: FloatProperty(default=0.0)
+    pitch: FloatProperty(default=0.0)
+
+    def run(self, context):
+        st = context.scene.kinema
+        idx = st.active_instance_index
+        if idx < 0 or idx >= len(st.instances):
+            return {"CANCELLED"}
+        inst = st.instances[idx]
+        inst.follow_yaw = self.yaw
+        inst.follow_pitch = self.pitch
         return {"FINISHED"}
 
 
