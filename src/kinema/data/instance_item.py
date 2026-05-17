@@ -20,6 +20,22 @@ def _is_object_poll(self, obj):
     return True
 
 
+def _apply_now(self, context):
+    """Instance プロパティが変わった時に即座に Follow/LookAt/Noise を 1 ステップ適用。
+
+    再生していない状態でもユーザーがスライダーを動かしたら追従が見えるようにする。
+    """
+    try:
+        from ..runtime import shot_dispatcher
+        # 再帰防止：dispatch 中の自己呼び出しを抑止
+        if shot_dispatcher._in_dispatch:
+            return
+        shot_dispatcher.dispatch(context.scene)
+    except Exception:
+        # update callback は何があっても UI を壊さない
+        pass
+
+
 class KinemaInstanceItem(bpy.types.PropertyGroup):
     """1 つのロード済みプリセット = 1 行。"""
 
@@ -38,6 +54,7 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
         name="Enabled",
         description="ランタイム（Follow/LookAt/Noise）を適用するか",
         default=True,
+        update=_apply_now,
     )
 
     # --- Lens ---
@@ -52,24 +69,27 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
     # --- Follow ---
     follow_target: PointerProperty(
         name="Follow Target", type=bpy.types.Object, poll=_is_object_poll,
+        update=_apply_now,
     )
-    follow_distance: FloatProperty(name="Distance", default=5.0, min=0.0)
-    follow_height: FloatProperty(name="Height", default=1.5)
-    follow_side: FloatProperty(name="Side Offset", default=0.0)
-    follow_damping: FloatProperty(name="Follow Damping", default=0.3, min=0.0, max=1.0)
+    follow_distance: FloatProperty(name="Distance", default=5.0, min=0.0, update=_apply_now)
+    follow_height: FloatProperty(name="Height", default=1.5, update=_apply_now)
+    follow_side: FloatProperty(name="Side Offset", default=0.0, update=_apply_now)
+    follow_damping: FloatProperty(name="Follow Damping", default=0.3, min=0.0, max=1.0, update=_apply_now)
 
     # --- LookAt ---
     lookat_target: PointerProperty(
         name="LookAt Target", type=bpy.types.Object, poll=_is_object_poll,
+        update=_apply_now,
     )
-    lookat_damping: FloatProperty(name="LookAt Damping", default=0.3, min=0.0, max=1.0)
+    lookat_damping: FloatProperty(name="LookAt Damping", default=0.3, min=0.0, max=1.0, update=_apply_now)
 
     # --- Noise ---
-    noise_enabled: BoolProperty(name="Noise", default=False)
-    noise_strength_pos: FloatProperty(name="Noise Pos", default=0.05, min=0.0)
+    noise_enabled: BoolProperty(name="Noise", default=False, update=_apply_now)
+    noise_strength_pos: FloatProperty(name="Noise Pos", default=0.05, min=0.0, update=_apply_now)
     noise_strength_rot: FloatProperty(
         name="Noise Rot (deg)", default=0.5, min=0.0,
         description="ローテーション側のノイズ振幅（度）",
+        update=_apply_now,
     )
-    noise_frequency: FloatProperty(name="Noise Freq", default=0.5, min=0.0)
-    noise_seed: IntProperty(name="Noise Seed", default=0, min=0)
+    noise_frequency: FloatProperty(name="Noise Freq", default=0.5, min=0.0, update=_apply_now)
+    noise_seed: IntProperty(name="Noise Seed", default=0, min=0, update=_apply_now)

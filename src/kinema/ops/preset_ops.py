@@ -5,6 +5,7 @@ from __future__ import annotations
 import bpy
 
 from ..utils import collections as kn_collections
+from ..utils import refs
 from ._base import KinemaOperator
 
 
@@ -72,6 +73,17 @@ class KINEMA_OT_load_preset(KinemaOperator):
         new_coll, cam = kn_collections.duplicate_collection(
             source, instances_root, base_name=sel.name,
         )
+
+        # 安全チェック: 既存 Instance と同じ collection_ref を指していないか
+        for existing in st.instances:
+            if refs.safe_collection(existing.collection_ref) is new_coll:
+                self.report(
+                    {"ERROR"},
+                    f"Load 失敗: 名前重複検出 ({new_coll.name})。"
+                    " Refresh Instances を実行してください",
+                )
+                kn_collections.remove_collection_recursive(new_coll)
+                return {"CANCELLED"}
 
         inst = st.instances.add()
         inst.name = new_coll.name

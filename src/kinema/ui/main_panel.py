@@ -161,6 +161,13 @@ class KINEMA_PT_main(bpy.types.Panel):
             else:
                 layout.label(text="アクティブ Instance にカメラがありません", icon="ERROR")
 
+        # --- Diagnostics ---
+        diag_box = layout.box()
+        diag_row = diag_box.row(align=True)
+        diag_row.label(text="Diagnostics", icon="TOOL_SETTINGS")
+        diag_row.operator("kinema.run_diagnostics", text="Run", icon="PLAY")
+        diag_row.operator("kinema.toggle_handlers", text="", icon="FILE_REFRESH")
+
 
 # ---------------------------------------------------------------------------
 # Helpers

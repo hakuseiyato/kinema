@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [2.0.0-alpha1.2] - 2026-05-16
+
+### Added
+- **リアルタイム反映**: Instance の Follow/LookAt/Noise プロパティに update
+  callback を仕込み、`depsgraph_update_post` handler も追加。再生していなく
+  ても、スライダー操作・ターゲット移動でカメラが即座に追従するようになった
+- **Preset UIList の情報量強化**: グループヘッダ・ショート名・元の完全名・
+  代表カメラ名・タグ・デフォルト Lens を併記
+- **Instance UIList の情報量強化**: コレクション名・ソースプリセット名・
+  カメラ名・Lens を併記。**collection_ref 重複検出**で `DUP` 警告アイコン
+- **Diagnostics ボタン** (`kinema.run_diagnostics`): handler 登録数・Instance
+  重複参照・参照切れ・Workspace 状態を Info Area / System Console に出力
+- Load Preset の安全チェック: 既存 Instance と同じ collection_ref が生まれ
+  たら即 rollback してエラー報告
+
+### Changed
+- `runtime/handlers.py`: `_HOOKS` に `depsgraph_update_post` を追加
+- `data/instance_item.py`: 各プロパティに `update=_apply_now` を仕込み
+- 重複参照や handler 重複は **UI から目視確認可能** に
+  （Yato さん：「Disable→Enable 重複チェック」は Diagnostics ボタンで実行可能）
+
 ## [2.0.0-alpha1.1] - 2026-05-16
 
 ### Added

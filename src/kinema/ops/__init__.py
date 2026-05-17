@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import _base, preset_ops, instance_ops, workspace_ops, handler_ops, source_ops
+from . import _base, preset_ops, instance_ops, workspace_ops, handler_ops, source_ops, diagnostics_ops
 
 
 _CLASSES = (
@@ -22,6 +22,7 @@ _CLASSES = (
     workspace_ops.KINEMA_OT_remove_workspace,
     handler_ops.KINEMA_OT_disable_cineflow_and_enable_handlers,
     handler_ops.KINEMA_OT_toggle_handlers,
+    diagnostics_ops.KINEMA_OT_run_diagnostics,
 )
 
 

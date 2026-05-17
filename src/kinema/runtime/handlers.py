@@ -23,6 +23,19 @@ def kinema_frame_change_pre(scene, depsgraph):  # noqa: ARG001
     shot_dispatcher.dispatch(scene)
 
 
+# depsgraph_update_post でも dispatch する。
+# これにより Follow Target / LookAt Target が動いたとき（オブジェクト操作・
+# Outliner ドラッグ・他アドオンによる移動など）、再生していなくてもカメラが
+# 追従するようになる。dispatch 内の `_in_dispatch` ガードで再帰を防ぐ。
+@persistent
+def kinema_depsgraph_update_post(scene, depsgraph):  # noqa: ARG001
+    # 再帰防止：dispatch 自身が cam.location を書き換えると再度 depsgraph が
+    # 更新されるが、_in_dispatch ガードがそれを抑止する。
+    if shot_dispatcher._in_dispatch:
+        return
+    shot_dispatcher.dispatch(scene)
+
+
 @persistent
 def kinema_load_post(_dummy):
     """`.blend` 読込時のセッション状態リセット。"""
@@ -40,6 +53,7 @@ def kinema_load_post(_dummy):
 
 _HOOKS = (
     ("frame_change_pre", kinema_frame_change_pre),
+    ("depsgraph_update_post", kinema_depsgraph_update_post),
     ("load_post", kinema_load_post),
 )
 
