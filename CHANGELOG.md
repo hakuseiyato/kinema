@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.1] - 2026-05-17
+
+### Added
+- **Kinema UI のカメラ選択 → Outliner / Viewport 連動**
+  - `data/scene_settings._on_active_preset_changed`: Preset 行をクリックすると
+    対応 Camera オブジェクトを Outliner / Viewport で **select + active** にする
+  - `data/scene_settings._on_active_instance_changed`: 既存の Keying Set
+    Rebuild に加え、Instance 行クリック時に該当カメラを同様に選択
+  - 既存選択は全解除して単一選択にする（Outliner 単クリック相当）
+  - グループヘッダ行は無視
+
+### Fixed
+- `.github/workflows/release.yml`: Node.js 20 deprecation warning を解消。
+  workflow に `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"` を env で設定し、
+  actions/checkout@v4 と softprops/action-gh-release@v2 を Node.js 24 で実行
+
 ## [2.0.0-beta2] - 2026-05-17
 
 「残タスク一括処理」フェーズ。alpha/beta1 系で積み残していた機能・運用・配布

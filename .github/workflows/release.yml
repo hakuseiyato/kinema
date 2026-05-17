@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# Opt-in to Node.js 24 runtime for JavaScript actions (Node.js 20 is being
+# deprecated; see https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/)
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build:
     runs-on: ubuntu-latest
