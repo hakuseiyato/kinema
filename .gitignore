@@ -5,6 +5,7 @@ __pycache__/
 .vscode/
 .idea/
 *.zip
+/dist/
 .DS_Store
 Thumbs.db
 

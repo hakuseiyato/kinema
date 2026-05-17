@@ -15,6 +15,7 @@ from . import (
     keyframe_ops,
     clipboard_ops,
     io_ops,
+    cineflow_import,
 )
 
 
@@ -44,6 +45,7 @@ _CLASSES = (
     clipboard_ops.KINEMA_OT_paste_settings,
     io_ops.KINEMA_OT_export_json,
     io_ops.KINEMA_OT_import_json,
+    cineflow_import.KINEMA_OT_import_from_cineflow,
 )
 
 

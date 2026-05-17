@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from manifest
+        id: ver
+        run: |
+          ver=$(grep -E '^version\s*=' src/kinema/blender_manifest.toml | head -1 | sed -E 's/^version\s*=\s*"([^"]+)".*/\1/')
+          echo "version=$ver" >> $GITHUB_OUTPUT
+          echo "Building kinema v$ver"
+
+      - name: Build ZIP
+        run: |
+          mkdir -p dist staging
+          rsync -a --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' \
+                src/kinema/ staging/kinema/
+          cd staging
+          zip -r "../dist/kinema-v${{ steps.ver.outputs.version }}.zip" kinema
+          cd ..
+          ls -lh dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/kinema-v${{ steps.ver.outputs.version }}.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

@@ -4,6 +4,44 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2] - 2026-05-17
+
+「残タスク一括処理」フェーズ。alpha/beta1 系で積み残していた機能・運用・配布
+周りをまとめて実装した結節点。次マイルストーンに向けて bump。
+
+### Added — 機能
+- **Y 軸 Roll を LookAt 中も反映**: Track To 制約を撤回し、`direction.to_track_quat`
+  ベースの自前 LookAt + local Z 軸回転で Roll を実現
+- **Solo / Mute / Lock**: 各 Instance に `solo` / `locked` を追加（enabled は既存
+  = Mute の逆）。dispatcher は solo フラグの立った Instance だけを評価し、locked
+  は UI 編集禁止 + Auto Keyframe / Key All の対象外に
+- **Keying Set の自動 Rebuild**: `active_instance_index` の update callback で
+  "Kinema Camera" Keying Set がある場合に `bpy.ops.kinema.rebuild_keying_set` を
+  自動呼出し
+- **JSON Export / Import** (`utils/json_io.py` + `ops/io_ops.py`): schema_version 1
+  で Scene の Instance 一覧を保存・読込。Pointer は名前で永続化、
+  `bpy_extras.ImportHelper/ExportHelper` ベースのファイルブラウザ
+- **cineflow Importer** (`ops/cineflow_import.py`): cineflow が enabled な
+  状態で `KINEMA_OT_import_from_cineflow` を実行して Instance を変換。
+  cineflow 警告バナーに Import ボタンを追加
+
+### Added — 配布
+- `LICENSE`: GPL-3.0-or-later 全文
+- `scripts/check_version.ps1`: `blender_manifest.toml` と `bl_info["version"]`
+  の base version 一致を確認（exit 0 で OK）
+- `scripts/build_zip.ps1`: 配布 ZIP をローカル生成（`__pycache__` / `.pyc` 除外）
+- `.github/workflows/release.yml`: `v*.*.*` tag push をトリガに ZIP を作って
+  GitHub Release に添付。`-` を含む tag は prerelease 扱い
+
+### Added — ドキュメント
+- `docs/architecture.md`: CLAUDE.md 規約に沿ったアーキ図・データフロー・主要設計判断
+- `docs/dev_workflow.md`: Junction reload と Disable→Enable の判断早見表 +
+  バージョン更新 / GitHub Release 手順 / よくあるトラブル
+- yato-atlas に `kinema/INDEX.md` を追加（プロジェクト引き継ぎファイル）
+
+### Tests
+- `tests/test_json_io.py`: 純粋ロジック 5 ケース緑（pytest 対象が 5 → 6 ファイルに）
+
 ## [2.0.0-beta1.10] - 2026-05-17
 
 ### 整理 / リファクタ

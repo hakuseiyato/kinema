@@ -28,12 +28,17 @@ class KINEMA_PT_main(bpy.types.Panel):
             layout.label(text="kinema PropertyGroup が未登録です", icon="ERROR")
             return
 
-        # --- cineflow 衝突警告 ---
+        # --- cineflow 衝突警告 + Import ---
         if _cineflow_enabled() and not _kinema_handlers_active():
             box = layout.box()
             box.alert = True
             box.label(text="cineflow が enabled です", icon="ERROR")
             box.label(text="kinema の frame_change handler は待機中")
+            box.operator(
+                "kinema.import_from_cineflow",
+                text="Import from cineflow",
+                icon="IMPORT",
+            )
             box.operator(
                 "kinema.disable_cineflow_and_enable_handlers",
                 icon="UNLINKED",
