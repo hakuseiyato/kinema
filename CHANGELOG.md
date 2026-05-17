@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1.9] - 2026-05-16
+
+### Fixed
+- **Rebuild Keying Set のエラー**:
+  `scene.keying_sets.remove()` が Blender 5.x で存在しないため
+  `AttributeError: bpy_prop_collection: attribute "remove" not found`。
+  既存 KS があれば `paths.clear()` で再利用する方式に変更
+- **Auto Keyframe が常に最初の Scene にキーを打つ問題**:
+  `_apply_now` が `context.scene` を使っていたため、複数 Scene 構成で
+  別 Scene の Instance を編集中も「context.scene = 1_MainScene」が選ばれて
+  しまっていた。`bpy.data.scenes` を走査して **自分が属する Scene を逆引き**
+  する `_find_owner_scene()` を追加し、Auto Keyframe / dispatch ともに
+  所有 Scene を使うように修正
+- Copy / Paste の Info レポートに **対象 Instance 名** を表示するように改善
+  （`Copied [follow] from 'XXX' (8 fields)` のような表記）
+
+### Known (要 fix が必要なら別途連絡)
+- Keying Set の path は作成時の Scene を target ID として記録するため、別
+  Scene で同じ Keying Set を使うと最初の Scene にキーが飛ぶ。複数 Scene
+  運用時は Scene 切替後に **Rebuild Keying Set** を再実行する必要あり
+
 ## [2.0.0-beta1.8] - 2026-05-16
 
 ### Added — 設定のコピー/ペースト

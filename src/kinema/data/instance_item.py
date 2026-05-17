@@ -20,22 +20,46 @@ def _is_object_poll(self, obj):
     return True
 
 
+def _find_owner_scene(inst):
+    """この Instance Item を所有する Scene を bpy.data.scenes から逆引き。
+
+    `context.scene` をそのまま信用すると、複数 Scene 構成で別 Scene の
+    Instance を編集中に「常に context.scene （= 最初のシーン）」を対象にして
+    しまうため、必ず所有 scene を特定して使う。
+    """
+    import bpy
+    for scene in bpy.data.scenes:
+        st = getattr(scene, "kinema", None)
+        if st is None:
+            continue
+        for it in st.instances:
+            if it.as_pointer() == inst.as_pointer():
+                return scene
+    return None
+
+
 def _apply_now(self, context):
     """Instance プロパティが変わった時に即座に Follow/LookAt/Noise を 1 ステップ適用。
 
     再生していない状態でもユーザーがスライダーを動かしたら追従が見えるようにする。
     Blender 標準の Auto Keyframe (赤丸) が ON のときは、変更されたプロパティに
     対しても keyframe_insert を呼んで標準動作に合わせる。
+
+    所有 Scene を確実に特定するため bpy.data.scenes を逆引きする。
     """
     try:
+        # 所有 scene を逆引き（context.scene と一致しない場合への対策）
+        scene = _find_owner_scene(self)
+        if scene is None:
+            return
+
         from ..runtime import instance_dispatcher
         # 再帰防止：dispatch 中の自己呼び出しを抑止
         if instance_dispatcher._in_dispatch:
             return
-        instance_dispatcher.dispatch(context.scene)
+        instance_dispatcher.dispatch(scene)
 
         # Auto Keyframe 連携: 標準赤丸 ON なら変更プロパティを scene 経由でキー
-        scene = context.scene
         ts = scene.tool_settings
         if not ts.use_keyframe_insert_auto:
             return
