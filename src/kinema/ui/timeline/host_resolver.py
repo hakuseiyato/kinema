@@ -9,14 +9,15 @@ kinema は **Video Sequencer (VSE)** をホストとして使う。
 二次キー: `Screen.name` + Area index（pointer が無効化された時の復帰用）
 """
 
-# kinema ホストとして扱う Editor タイプ
-HOST_AREA_TYPE = "SEQUENCE_EDITOR"
-
 from __future__ import annotations
 
 from typing import Optional
 
 import bpy
+
+
+# kinema ホストとして扱う Editor タイプ
+HOST_AREA_TYPE = "SEQUENCE_EDITOR"
 
 
 def claim_area(window: bpy.types.Window, area: bpy.types.Area) -> None:
