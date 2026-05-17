@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import preset_item, instance_item, shot, track, timeline_view, scene_settings
+from . import preset_item, instance_item, shot, track, timeline_view, scene_settings, wm_settings
 
 
 _CLASSES = (
@@ -25,9 +25,11 @@ def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.kinema = bpy.props.PointerProperty(type=scene_settings.KinemaSceneSettings)
+    wm_settings.register()
 
 
 def unregister() -> None:
+    wm_settings.unregister()
     try:
         del bpy.types.Scene.kinema
     except Exception:

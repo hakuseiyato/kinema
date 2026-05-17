@@ -163,6 +163,44 @@ class KINEMA_PT_main(bpy.types.Panel):
             else:
                 layout.label(text="アクティブ Instance にカメラがありません", icon="ERROR")
 
+        # --- Shot Timeline ---
+        tl_box = layout.box()
+        wm = context.window_manager
+        tl_header = tl_box.row(align=True)
+        tl_mode_on = hasattr(wm, "kinema") and wm.kinema.timeline_mode_on
+        tl_header.label(
+            text=f"Shot Timeline ({len(st.shot_clips)})",
+            icon="SEQUENCE",
+        )
+        if tl_mode_on:
+            tl_header.label(text="ON", icon="CHECKMARK")
+        else:
+            tl_header.label(text="OFF", icon="X")
+
+        tl_box.label(
+            text="Image Editor のヘッダから 'Kinema' を押すと有効化",
+            icon="INFO",
+        )
+        tl_ops = tl_box.row(align=True)
+        tl_ops.operator("kinema.add_shot_at_playhead", text="Add Shot", icon="ADD")
+        tl_ops.operator("kinema.delete_active_shot", text="", icon="X")
+        tl_ops.operator("kinema.clear_shots", text="Clear All", icon="TRASH")
+
+        # 簡易 Shot 一覧（最大 6 件まで表示）
+        if st.shot_clips:
+            shots_col = tl_box.column(align=True)
+            for clip in list(st.shot_clips)[:6]:
+                row = shots_col.row(align=True)
+                is_active = clip.uid == st.active_clip_uid
+                row.label(
+                    text=f"{clip.name}: F{clip.frame_start}-{clip.frame_end}",
+                    icon="DOT" if is_active else "BLANK1",
+                )
+                if clip.camera is not None:
+                    row.label(text=clip.camera.name, icon="OUTLINER_OB_CAMERA")
+            if len(st.shot_clips) > 6:
+                shots_col.label(text=f"... and {len(st.shot_clips) - 6} more")
+
         # --- Diagnostics ---
         diag_box = layout.box()
         diag_row = diag_box.row(align=True)

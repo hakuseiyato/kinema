@@ -4,6 +4,33 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1] - 2026-05-16
+
+### Added — Shot Timeline UI 基盤
+- `data/wm_settings.KinemaWMSettings`: WindowManager.kinema PropertyGroup
+  （host_window_pointer / host_area_pointer / host_screen_name / host_area_index
+  / timeline_mode_on / modal_dryrun_state）
+- `ui/timeline/host_resolver`: 主キー (pointer) + 二次キー (screen+index) で
+  ホスト Area を識別。pointer 無効化時に二次キーから self-heal
+- `ui/timeline/drawer`: `SpaceImageEditor.draw_handler_add` 経由で背景・
+  フレームグリッド・トラック・Shot ストリップ・プレイヘッドを GPU 描画
+- `ui/timeline/header_append`: IMAGE_HT_header に kinema モード ON/OFF
+  トグルを追加
+- `ui/timeline/modal_ops.KINEMA_OT_timeline_click`: 左クリックで Shot 選択 /
+  プレイヘッド移動
+- `ops/timeline_ops`:
+  - `KINEMA_OT_toggle_timeline_mode`: ホスト指定 + モード切替
+  - `KINEMA_OT_add_shot_at_playhead`: プレイヘッド位置に 50 フレーム Shot 追加
+  - `KINEMA_OT_delete_active_shot` / `KINEMA_OT_clear_shots`
+- `ui/main_panel`: Shot Timeline セクション追加（Shot 一覧 + 操作ボタン）
+- `docs/beta1_smoke_test.md`: 動作確認手順
+
+### Notes
+- shot_dispatcher (alpha1 実装) と直結しているので、Shot を追加して再生すると
+  `scene.camera` が自動切替される
+- 描画は kinema 専用ホスト Area の 1 つだけで行われ、他の Image Editor は
+  通常通り画像表示用として使える
+
 ## [2.0.0-alpha1.6] - 2026-05-16
 
 ### Added
