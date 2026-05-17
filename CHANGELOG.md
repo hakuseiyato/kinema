@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+## [2.0.0-alpha1.6] - 2026-05-16
+
+### Added
+- **Preset 一覧をコレクション別グループ + 折り畳み**
+  - `data/preset_item`: `header_collapsed` / `child_count` フィールド追加
+  - `utils/collections.scan_presets_with_headers`: グループヘッダ行を挿入
+  - `ops/preset_ops.KINEMA_OT_toggle_preset_group_collapse`: ▼/▶ クリックで
+    折り畳み
+  - `ui/presets_view`: ヘッダ行描画 + `filter_items` で折り畳まれたグループの
+    子を非表示
+  - 再スキャンしても折り畳み状態を維持
+
+### Changed
+- **Quick Start バナーを常設化**: Preset Root に子があっても Quick Start /
+  Init Root / Capture View / Add Selected ボタンが常に出る
+- バースト抑制を 120Hz → **240Hz** に緩和（4ms 間隔まで dispatch を通す）。
+  停止中のスライダー / target 移動のカクつきを軽減
+
 ## [2.0.0-alpha1.5] - 2026-05-16
 
 ### Fixed

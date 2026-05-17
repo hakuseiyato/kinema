@@ -17,15 +17,26 @@ class KINEMA_OT_scan_presets(KinemaOperator):
 
     def run(self, context):
         st = context.scene.kinema
-        flat = kn_collections.scan_presets(context.scene, st.preset_root_name)
+        # 折り畳み状態を保持しておく（再スキャン後も維持するため）
+        collapsed_groups = {
+            item.group for item in st.presets if item.is_header and item.header_collapsed
+        }
+
+        flat = kn_collections.scan_presets_with_headers(context.scene, st.preset_root_name)
         st.presets.clear()
+        camera_count = 0
         for entry in flat:
             item = st.presets.add()
             item.name = entry["name"]
-            item.is_header = False  # 新仕様ではヘッダ行を使わない
+            item.is_header = entry["is_header"]
+            item.header_collapsed = (
+                entry.get("header_collapsed", False)
+                or (entry["is_header"] and entry["group"] in collapsed_groups)
+            )
+            item.child_count = entry.get("child_count", 0)
             item.group = entry["group"]
             item.short_name = entry["short_name"]
-            item.display_name = entry["short_name"]
+            item.display_name = entry.get("display_name") or entry["short_name"]
             item.camera_name = entry["camera_name"]
             meta = entry["meta"]
             item.tags = meta["tags"]
@@ -34,11 +45,33 @@ class KINEMA_OT_scan_presets(KinemaOperator):
             item.preview_end = meta["preview_end"]
             item.follow_target = meta["follow_target"]
             item.lookat_target = meta["lookat_target"]
+            if not entry["is_header"]:
+                camera_count += 1
+
         if st.presets:
             st.active_preset_index = min(st.active_preset_index, len(st.presets) - 1)
         else:
             st.active_preset_index = 0
-        self.report({"INFO"}, f"Scan: {len(flat)} presets")
+        self.report({"INFO"}, f"Scan: {camera_count} cameras")
+        return {"FINISHED"}
+
+
+class KINEMA_OT_toggle_preset_group_collapse(KinemaOperator):
+    """Preset 一覧のグループヘッダ行の折り畳み状態をトグル。"""
+    bl_idname = "kinema.toggle_preset_group_collapse"
+    bl_label = "Toggle Group Collapse"
+    bl_description = "Preset グループの折り畳み状態を切り替える"
+
+    index: bpy.props.IntProperty(default=-1)
+
+    def run(self, context):
+        st = context.scene.kinema
+        if self.index < 0 or self.index >= len(st.presets):
+            return {"CANCELLED"}
+        item = st.presets[self.index]
+        if not item.is_header:
+            return {"CANCELLED"}
+        item.header_collapsed = not item.header_collapsed
         return {"FINISHED"}
 
 

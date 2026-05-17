@@ -28,7 +28,9 @@ _last_dispatch_time: dict[str, float] = {}
 # バースト抑制閾値（秒）。これより短い間隔の連続呼び出しは skip し、
 # 前回の damping 結果を保持する。スライダー連打などで dispatch が
 # 秒間数百回呼ばれても安定して追従させる。
-_BURST_MIN_INTERVAL = 1.0 / 120.0  # 120Hz 以上の連打は間引く
+# 240Hz まで通す（4ms 間隔）→ 通常のディスプレイ更新より速いので、
+# 視覚的なカクつきはほぼ起きない。
+_BURST_MIN_INTERVAL = 1.0 / 240.0
 
 
 def reset_state() -> None:

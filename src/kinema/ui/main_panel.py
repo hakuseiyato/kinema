@@ -63,31 +63,32 @@ class KINEMA_PT_main(bpy.types.Panel):
         )
         root_has_children = root_in_scene and bool(list(preset_root_coll.children))
 
-        # --- Quick Start バナー（Root が無い or 空の時に強調表示）---
-        if not root_in_scene or not root_has_children:
-            qs = layout.box()
-            qs.label(text="Quick Start", icon="PLAY")
+        # --- Quick Start / Source 追加（常設）---
+        qs = layout.box()
+        qs.label(text="Quick Start / Add Source", icon="PLAY")
+        if not root_in_scene:
             qs.label(
-                text=("Preset Root '{}' が未準備です".format(st.preset_root_name)
-                      if not root_in_scene else
-                      "Preset Root は空です。プリセットを追加してください"),
+                text=f"Preset Root '{st.preset_root_name}' が未準備です",
                 icon="INFO",
             )
-            qs.operator("kinema.quick_start", icon="SOLO_ON")
-            row = qs.row(align=True)
-            row.operator("kinema.init_preset_root", text="Init Root", icon="ADD")
-            row.operator("kinema.capture_view_as_preset", text="Capture View", icon="VIEW_CAMERA")
-            qs.operator(
-                "kinema.add_selected_cameras_as_presets",
-                text="Add Selected Cameras",
-                icon="OUTLINER_OB_CAMERA",
-            )
+        elif not root_has_children:
+            qs.label(text="Preset Root は空です", icon="INFO")
+        qs.operator("kinema.quick_start", icon="SOLO_ON")
+        row = qs.row(align=True)
+        row.operator("kinema.init_preset_root", text="Init Root", icon="ADD")
+        row.operator("kinema.capture_view_as_preset", text="Capture View", icon="VIEW_CAMERA")
+        qs.operator(
+            "kinema.add_selected_cameras_as_presets",
+            text="Add Selected Cameras",
+            icon="OUTLINER_OB_CAMERA",
+        )
 
         # --- Presets ---
         preset_box = layout.box()
         row = preset_box.row(align=True)
-        # 新仕様: 各 Camera オブジェクトを 1 Preset として扱う
-        row.label(text=f"Presets ({len(st.presets)} cameras)", icon="OUTLINER_OB_CAMERA")
+        # is_header を除いた件数
+        cam_count = sum(1 for p in st.presets if not p.is_header)
+        row.label(text=f"Presets ({cam_count} cameras)", icon="OUTLINER_OB_CAMERA")
         row.operator("kinema.scan_presets", text="", icon="FILE_REFRESH")
 
         preset_box.template_list(

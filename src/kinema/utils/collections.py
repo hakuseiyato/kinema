@@ -155,10 +155,63 @@ def _walk_cameras(coll, parent_path, depth, result, skip_self=False):
         _walk_cameras(child, current_path, current_depth, result, skip_self=False)
 
 
+def scan_presets_with_headers(scene, preset_root_name: str) -> list[dict]:
+    """scan_presets の結果を **コレクションごとにグループ化** してヘッダ行を挿入する。
+
+    UI で折り畳み可能なグループとして表示する用途。返値の各エントリは
+    is_header=True か False のいずれか:
+      - is_header=True: グループヘッダ。group / child_count を持つ。
+      - is_header=False: 通常の Camera Preset。group がヘッダと対応する。
+    """
+    flat = scan_presets(scene, preset_root_name)
+    if not flat:
+        return []
+
+    # group キーごとに集計（順序保持のため dict を使う）
+    by_group: dict[str, list[dict]] = {}
+    for entry in flat:
+        by_group.setdefault(entry["group"], []).append(entry)
+
+    result: list[dict] = []
+
+    # まず root 直下（group=""）のカメラを先頭に並べる（ヘッダなし）
+    if "" in by_group:
+        for entry in by_group[""]:
+            new_entry = dict(entry)
+            new_entry["is_header"] = False
+            new_entry["child_count"] = 0
+            result.append(new_entry)
+        del by_group[""]
+
+    # 残りのグループごとにヘッダ + 子を並べる
+    for group_path, items in by_group.items():
+        # 表示用にグループ名の末尾要素だけを使う（"Hero/Sub" → "Sub"）
+        display_label = group_path.split("/")[-1] if group_path else group_path
+        result.append({
+            "is_header": True,
+            "name": f"__group_{group_path}",
+            "header_collapsed": False,
+            "child_count": len(items),
+            "group": group_path,
+            "short_name": display_label,
+            "display_name": display_label,
+            "camera_name": "",
+            "depth": 0,
+            "parent_path": [],
+            "meta": dict(_EMPTY_META),
+        })
+        for entry in items:
+            new_entry = dict(entry)
+            new_entry["is_header"] = False
+            new_entry["child_count"] = 0
+            result.append(new_entry)
+    return result
+
+
 # 旧 API 互換
 def scan_presets_grouped(scene, preset_root_name, min_group_size=2):  # noqa: ARG001
-    """互換シム。"""
-    return scan_presets(scene, preset_root_name)
+    """互換シム。新仕様ではヘッダ付き版を返す。"""
+    return scan_presets_with_headers(scene, preset_root_name)
 
 
 # ---------------------------------------------------------------------------
