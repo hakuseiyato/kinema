@@ -1,22 +1,22 @@
 """kinema.data — PropertyGroup 定義群。
 
 責務別にファイルを分割し、本モジュールでまとめて register/unregister する。
+
+beta1 で実装した独自タイムライン UI と Shot/Track/TimelineView/WMSettings 系
+PropertyGroup は撤回した（Yato さん要望：Blender 標準タイムラインを使う運用に戻す）。
 """
 
 from __future__ import annotations
 
 import bpy
 
-from . import preset_item, instance_item, shot, track, timeline_view, scene_settings, wm_settings
+from . import preset_item, instance_item, scene_settings
 
 
 _CLASSES = (
     # 子要素は親より先に register する必要がある
     preset_item.KinemaPresetItem,
     instance_item.KinemaInstanceItem,
-    shot.KinemaShotClip,
-    track.KinemaTrack,
-    timeline_view.KinemaTimelineView,
     scene_settings.KinemaSceneSettings,
 )
 
@@ -25,11 +25,9 @@ def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.kinema = bpy.props.PointerProperty(type=scene_settings.KinemaSceneSettings)
-    wm_settings.register()
 
 
 def unregister() -> None:
-    wm_settings.unregister()
     try:
         del bpy.types.Scene.kinema
     except Exception:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import main_panel, presets_view, instances_view, timeline
+from . import main_panel, presets_view, instances_view
 
 
 _CLASSES = (
@@ -17,11 +17,9 @@ _CLASSES = (
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    timeline.register()
 
 
 def unregister() -> None:
-    timeline.unregister()
     for cls in reversed(_CLASSES):
         try:
             bpy.utils.unregister_class(cls)

@@ -1,4 +1,8 @@
-"""KinemaSceneSettings — Scene にぶら下がる最上位 PropertyGroup。"""
+"""KinemaSceneSettings — Scene にぶら下がる最上位 PropertyGroup。
+
+Shot Timeline 関連の集合 (tracks / shot_clips / timeline_view) は撤回した。
+代わりに Blender 標準 Timeline / VSE / Marker を運用で使う。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +15,7 @@ from bpy.props import (
 )
 
 from ..config import constants as C
-from . import preset_item, instance_item, shot, track, timeline_view
+from . import preset_item, instance_item
 
 
 class KinemaSceneSettings(bpy.types.PropertyGroup):
@@ -41,12 +45,6 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
     # --- Instance 一覧 ---
     instances: CollectionProperty(type=instance_item.KinemaInstanceItem)
     active_instance_index: IntProperty(name="Active Instance", default=0)
-
-    # --- Timeline data ---
-    tracks: CollectionProperty(type=track.KinemaTrack)
-    shot_clips: CollectionProperty(type=shot.KinemaShotClip)
-    active_clip_uid: StringProperty(name="Active Clip UID", default="")
-    timeline_view: bpy.props.PointerProperty(type=timeline_view.KinemaTimelineView)
 
     # --- 動作 ---
     auto_preview_on_select: BoolProperty(

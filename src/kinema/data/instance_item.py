@@ -26,11 +26,11 @@ def _apply_now(self, context):
     再生していない状態でもユーザーがスライダーを動かしたら追従が見えるようにする。
     """
     try:
-        from ..runtime import shot_dispatcher
+        from ..runtime import instance_dispatcher
         # 再帰防止：dispatch 中の自己呼び出しを抑止
-        if shot_dispatcher._in_dispatch:
+        if instance_dispatcher._in_dispatch:
             return
-        shot_dispatcher.dispatch(context.scene)
+        instance_dispatcher.dispatch(context.scene)
     except Exception:
         # update callback は何があっても UI を壊さない
         pass

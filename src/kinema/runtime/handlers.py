@@ -11,7 +11,7 @@ from __future__ import annotations
 import bpy
 from bpy.app.handlers import persistent
 
-from . import shot_dispatcher
+from . import instance_dispatcher
 
 
 # ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ from . import shot_dispatcher
 @persistent
 def kinema_frame_change_pre(scene, depsgraph):  # noqa: ARG001
     # 再生時の取りこぼし防止のため force=True
-    shot_dispatcher.dispatch(scene, force=True)
+    instance_dispatcher.dispatch(scene, force=True)
 
 
 # depsgraph_update_post でも常に dispatch する。
@@ -32,15 +32,15 @@ def kinema_frame_change_pre(scene, depsgraph):  # noqa: ARG001
 # を判定するので、handler 側で再生状態を見て分岐する必要は無い。
 @persistent
 def kinema_depsgraph_update_post(scene, depsgraph):  # noqa: ARG001
-    if shot_dispatcher._in_dispatch:
+    if instance_dispatcher._in_dispatch:
         return
-    shot_dispatcher.dispatch(scene)
+    instance_dispatcher.dispatch(scene)
 
 
 @persistent
 def kinema_load_post(_dummy):
     """`.blend` 読込時のセッション状態リセット。"""
-    shot_dispatcher.reset_state()
+    instance_dispatcher.reset_state()
 
 
 # (window_manager.kinema は session-only なので load_post で host pointer 等を

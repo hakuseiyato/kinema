@@ -4,6 +4,29 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1.2] - 2026-05-16
+
+### Removed (revert)
+- **独自タイムライン UI を全撤回**（Yato さん要望：Blender 標準
+  Timeline / VSE を運用で使う方針に変更）
+  - `ui/timeline/` (host_resolver / drawer / header_append / modal_ops)
+  - `ops/timeline_ops.py`（Toggle Mode / Add Shot / Delete / Clear All）
+  - `data/wm_settings.py` (WindowManager.kinema)
+  - `data/shot.py`, `data/track.py`, `data/timeline_view.py`
+  - `runtime/shot_dispatcher.py`
+  - `docs/beta1_smoke_test.md`
+  - `main_panel` の Shot Timeline セクション
+- `scene_settings`: tracks / shot_clips / active_clip_uid / timeline_view
+  フィールドを撤去
+
+### Added
+- `runtime/instance_dispatcher.py`: 旧 shot_dispatcher の Instance フォール
+  バック部分のみを抽出したシンプルな dispatcher。frame_change / depsgraph /
+  update callback から呼ばれ、Instance に Follow/LookAt/Noise を 1 ステップ適用
+- **`KINEMA_OT_duplicate_instance`**: 選択中の Instance を関連オブジェクトごと
+  複製。Follow/LookAt/Noise/Lens 等のパラメータも丸ごとコピー
+- Instance UIList と Instances ボックスヘッダに **Duplicate ボタン** 追加
+
 ## [2.0.0-beta1.1] - 2026-05-16
 
 ### Changed

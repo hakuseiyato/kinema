@@ -72,6 +72,9 @@ class KINEMA_UL_instances(bpy.types.UIList):
         # ショートカット: Preview
         op = row.operator("kinema.preview_instance", text="", icon="RESTRICT_VIEW_OFF")
         op.index = index
+        # ショートカット: Duplicate
+        op = row.operator("kinema.duplicate_instance", text="", icon="DUPLICATE")
+        op.index = index
         # ショートカット: Unload
         op = row.operator("kinema.unload_instance", text="", icon="X")
         op.index = index

@@ -12,7 +12,6 @@ from . import (
     handler_ops,
     source_ops,
     diagnostics_ops,
-    timeline_ops,
 )
 
 
@@ -24,6 +23,7 @@ _CLASSES = (
     preset_ops.KINEMA_OT_scan_presets,
     preset_ops.KINEMA_OT_toggle_preset_group_collapse,
     preset_ops.KINEMA_OT_load_preset,
+    instance_ops.KINEMA_OT_duplicate_instance,
     instance_ops.KINEMA_OT_unload_instance,
     instance_ops.KINEMA_OT_preview_instance,
     instance_ops.KINEMA_OT_apply_lens,
@@ -33,10 +33,6 @@ _CLASSES = (
     handler_ops.KINEMA_OT_disable_cineflow_and_enable_handlers,
     handler_ops.KINEMA_OT_toggle_handlers,
     diagnostics_ops.KINEMA_OT_run_diagnostics,
-    timeline_ops.KINEMA_OT_toggle_timeline_mode,
-    timeline_ops.KINEMA_OT_add_shot_at_playhead,
-    timeline_ops.KINEMA_OT_delete_active_shot,
-    timeline_ops.KINEMA_OT_clear_shots,
 )
 
 
