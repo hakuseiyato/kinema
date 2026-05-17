@@ -9,5 +9,7 @@ __pycache__/
 Thumbs.db
 
 # Obsidian Vault (もしリポ内に作成された場合は git 管理外)
-Kinema/
+# 注: 先頭スラッシュでリポ直下のみに限定（Windows の case-insensitive で
+#     src/kinema/ にも誤マッチするのを防ぐ）
+/Kinema/
 .obsidian/
