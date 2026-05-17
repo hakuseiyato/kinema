@@ -56,6 +56,33 @@ class KINEMA_PT_main(bpy.types.Panel):
         src.prop(st, "preset_root_name")
         src.prop(st, "instances_root_name")
 
+        # Preset Root の状態判定
+        preset_root_coll = bpy.data.collections.get(st.preset_root_name)
+        root_in_scene = preset_root_coll is not None and any(
+            c == preset_root_coll for c in scene.collection.children
+        )
+        root_has_children = root_in_scene and bool(list(preset_root_coll.children))
+
+        # --- Quick Start バナー（Root が無い or 空の時に強調表示）---
+        if not root_in_scene or not root_has_children:
+            qs = layout.box()
+            qs.label(text="Quick Start", icon="PLAY")
+            qs.label(
+                text=("Preset Root '{}' が未準備です".format(st.preset_root_name)
+                      if not root_in_scene else
+                      "Preset Root は空です。プリセットを追加してください"),
+                icon="INFO",
+            )
+            qs.operator("kinema.quick_start", icon="SOLO_ON")
+            row = qs.row(align=True)
+            row.operator("kinema.init_preset_root", text="Init Root", icon="ADD")
+            row.operator("kinema.capture_view_as_preset", text="Capture View", icon="VIEW_CAMERA")
+            qs.operator(
+                "kinema.add_selected_cameras_as_presets",
+                text="Add Selected Cameras",
+                icon="OUTLINER_OB_CAMERA",
+            )
+
         # --- Presets ---
         preset_box = layout.box()
         row = preset_box.row(align=True)
@@ -69,6 +96,16 @@ class KINEMA_PT_main(bpy.types.Panel):
             rows=6,
         )
         preset_box.operator("kinema.load_preset", icon="IMPORT")
+
+        # 通常モードでも Source 追加系を畳んで配置（Root 準備済の時）
+        if root_in_scene and root_has_children:
+            add_row = preset_box.row(align=True)
+            add_row.operator("kinema.capture_view_as_preset", text="Capture View", icon="VIEW_CAMERA")
+            add_row.operator(
+                "kinema.add_selected_cameras_as_presets",
+                text="Add Selected",
+                icon="OUTLINER_OB_CAMERA",
+            )
 
         # --- Instances ---
         inst_box = layout.box()

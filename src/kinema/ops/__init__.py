@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import bpy
 
-from . import _base, preset_ops, instance_ops, workspace_ops, handler_ops
+from . import _base, preset_ops, instance_ops, workspace_ops, handler_ops, source_ops
 
 
 _CLASSES = (
+    source_ops.KINEMA_OT_init_preset_root,
+    source_ops.KINEMA_OT_quick_start,
+    source_ops.KINEMA_OT_capture_view_as_preset,
+    source_ops.KINEMA_OT_add_selected_cameras_as_presets,
     preset_ops.KINEMA_OT_scan_presets,
     preset_ops.KINEMA_OT_load_preset,
     instance_ops.KINEMA_OT_unload_instance,

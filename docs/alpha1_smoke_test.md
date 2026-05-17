@@ -43,7 +43,29 @@ Settings ボックスに **赤い警告バナー**が出る:
 
 alpha1 では Kinema タブの中身は「Layout 複製のまま」。beta1 で独自タイムライン UI を仕込む。
 
-## 5. プリセット階層を準備
+## 5. プリセット階層を準備（ワンクリックでも手動でも OK）
+
+### ワンクリック（推奨）
+
+Preset Root が存在しない / 空の時は、パネルに **Quick Start バナー**が出る:
+
+```
+▶ Quick Start
+  Preset Root 'Kinema_Presets' が未準備です
+
+  [ Quick Start ]                  ← これ 1 ボタンで Root + サンプルプリセット
+  [ Init Root ] [ Capture View ]
+  [ Add Selected Cameras ]
+```
+
+- **Quick Start**: `Kinema_Presets` コレクションを作り、空の場合は `Sample_Camera` サブコレクション + 新規カメラを 1 件作る。続けて自動スキャン
+- **Init Root**: 空の Preset Root だけ作る（中身は自分で）
+- **Capture View**: 現在の 3D ビュー視点で新規カメラを作って Preset 登録
+- **Add Selected Cameras**: シーン内で選択中の Camera を Preset 登録
+
+Quick Start を一度押せば、その後のフローは「Scan 済 → 選択 → Load」のみ。
+
+### 手動で組みたい場合
 
 シーン直下にコレクションを作り、その中に Camera を含むサブコレクションを置く：
 
@@ -115,6 +137,10 @@ cd C:\Work\Yato\Claude\kinema\scripts
 - [ ] cineflow が enabled だと警告が出て、ボタン 1 つで切替できる
 - [ ] Properties > Scene > Kinema パネルが描画される
 - [ ] Create Kinema Workspace で `Kinema` タブが追加される
+- [ ] Preset Root が無いと Quick Start バナーが出る
+- [ ] Quick Start ボタン 1 回で Preset Root + サンプルカメラが揃って Scan 済になる
+- [ ] Capture View で現在のビューポート視点から新規カメラが Preset 登録される
+- [ ] Add Selected Cameras で選択中の Camera が Preset 登録される
 - [ ] Scan Presets でコレクションが一覧表示される
 - [ ] グループ（同プレフィックスが ≥2 件）でヘッダ行が出る
 - [ ] Load Selected Preset で Instance が複製される（重複時は `_001` で採番）

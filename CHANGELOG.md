@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+## [2.0.0-alpha1.1] - 2026-05-16
+
+### Added
+- **Preset ソース生成のワンクリック化**
+  - `utils/source_init.py`: `ensure_preset_root` / `make_empty_preset` /
+    `register_camera_as_preset` / `capture_view_as_new_preset` / `quick_start`
+    の純粋ロジック層（Yato Project Kit からの呼び出しも想定）
+  - `ops/source_ops.py`: 上記の Operator ラッパ（`KINEMA_OT_init_preset_root`、
+    `KINEMA_OT_quick_start`、`KINEMA_OT_capture_view_as_preset`、
+    `KINEMA_OT_add_selected_cameras_as_presets`）
+  - UI: Preset Root が未準備 / 空の時に Quick Start バナーを表示。準備済の時も
+    Capture View / Add Selected ボタンを Presets ボックスに常設
+- `docs/source_init_spec.md`: Yato Project Kit に引き継ぐための API 仕様
+
+### Changed
+- `docs/alpha1_smoke_test.md` の Step 5 をワンクリック手順優先に書き換え
+- 動作確認チェックリストに Quick Start / Capture View / Add Selected を追加
+
 ## [2.0.0-alpha1] - 2026-05-16
 
 ### Added
