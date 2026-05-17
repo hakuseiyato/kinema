@@ -4,6 +4,31 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1.8] - 2026-05-16
+
+### Added — 設定のコピー/ペースト
+- `data/wm_settings.KinemaClipboard`: session-only クリップボード
+  PropertyGroup（`WindowManager.kinema_clipboard`）。カテゴリ別に
+  6 スロット（all / pose / dof / follow / lookat / noise）の JSON 文字列
+- `ops/clipboard_ops.py` 新規:
+  - `KINEMA_OT_copy_settings(category)`: Active Instance の指定カテゴリを
+    JSON 化して該当スロットに保存
+  - `KINEMA_OT_paste_settings(category)`: 該当スロットから読み込んで
+    Active Instance に適用
+- PointerProperty (Follow Target / LookAt Target / Focus Object) は名前で
+  保存し、ペースト時に `bpy.data.objects.get` で解決
+- UI:
+  - Active Instance ヘッダに **Copy All / Paste All** アイコン
+  - 各セクション (Lens/Shift / DoF / Follow / LookAt / Noise) のヘッダに
+    **個別 Copy / Paste** アイコン
+
+### 使い方
+- 1 つの Instance の Follow 設定を完成させる → セクション横の Copy → 他の
+  Instance を Active に → Paste で同じ Follow 設定を反映
+- 全体丸ごとコピーしたい場合は Active ヘッダの Copy All / Paste All
+- カテゴリ別と一括は独立スロットなので、Follow を Copy した直後に Lens を
+  Copy しても Follow スロットは保持される
+
 ## [2.0.0-beta1.7] - 2026-05-16
 
 ### Added — キーフレーム

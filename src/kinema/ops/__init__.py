@@ -13,6 +13,7 @@ from . import (
     source_ops,
     diagnostics_ops,
     keyframe_ops,
+    clipboard_ops,
 )
 
 
@@ -38,6 +39,8 @@ _CLASSES = (
     keyframe_ops.KINEMA_OT_keyframe_all,
     keyframe_ops.KINEMA_OT_rebuild_keying_set,
     keyframe_ops.KINEMA_OT_toggle_auto_keyframe,
+    clipboard_ops.KINEMA_OT_copy_settings,
+    clipboard_ops.KINEMA_OT_paste_settings,
 )
 
 

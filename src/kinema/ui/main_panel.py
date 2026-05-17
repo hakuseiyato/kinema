@@ -145,17 +145,27 @@ class KINEMA_PT_main(bpy.types.Panel):
                 key_row.operator(
                     "kinema.rebuild_keying_set", text="", icon="KEYINGSET",
                 )
+                # 一括コピペ
+                cpy_all = key_row.operator(
+                    "kinema.copy_settings", text="", icon="COPYDOWN",
+                )
+                cpy_all.category = "all"
+                paste_all = key_row.operator(
+                    "kinema.paste_settings", text="", icon="PASTEDOWN",
+                )
+                paste_all.category = "all"
 
-                # Lens
+                # Lens & Shift (Pose カテゴリ)
+                pose_header = detail.row(align=True)
+                pose_header.label(text="Lens / Shift", icon="OBJECT_ORIGIN")
+                _draw_copy_paste(pose_header, "pose")
+
                 lens_row = detail.row(align=True)
                 lens_row.prop(inst, "lens_mm")
                 lens_row.operator("kinema.apply_lens", text="", icon="CHECKMARK")
 
-                # Shift（Camera Data 直接編集）
                 if cam.data is not None:
-                    shift_col = detail.column(align=True)
-                    shift_col.label(text="Shift", icon="OBJECT_ORIGIN")
-                    shift_row = shift_col.row(align=True)
+                    shift_row = detail.row(align=True)
                     shift_row.prop(cam.data, "shift_x", text="X")
                     shift_row.prop(cam.data, "shift_y", text="Y")
 
@@ -163,10 +173,12 @@ class KINEMA_PT_main(bpy.types.Panel):
                 if cam.data is not None:
                     dof = cam.data.dof
                     dof_box = detail.box()
-                    dof_box.prop(
+                    dof_head = dof_box.row(align=True)
+                    dof_head.prop(
                         dof, "use_dof",
                         text="Depth of Field", icon="CON_CAMERASOLVER",
                     )
+                    _draw_copy_paste(dof_head, "dof")
                     if dof.use_dof:
                         dof_box.prop(dof, "focus_object", text="Focus Object")
                         if dof.focus_object is None:
@@ -180,7 +192,9 @@ class KINEMA_PT_main(bpy.types.Panel):
 
                 # Follow
                 follow_col = detail.column(align=True)
-                follow_col.label(text="Follow")
+                follow_head = follow_col.row(align=True)
+                follow_head.label(text="Follow")
+                _draw_copy_paste(follow_head, "follow")
                 follow_col.prop(inst, "follow_target", text="Target")
                 if refs.safe_object(inst.follow_target):
                     follow_col.prop(inst, "follow_distance")
@@ -216,7 +230,9 @@ class KINEMA_PT_main(bpy.types.Panel):
 
                 # LookAt
                 look_col = detail.column(align=True)
-                look_col.label(text="LookAt")
+                look_head = look_col.row(align=True)
+                look_head.label(text="LookAt")
+                _draw_copy_paste(look_head, "lookat")
                 look_col.prop(inst, "lookat_target", text="Target")
                 # 明示指定がない場合に Follow Target を自動注視している旨を表示
                 if (
@@ -235,7 +251,9 @@ class KINEMA_PT_main(bpy.types.Panel):
 
                 # Noise
                 noise_col = detail.column(align=True)
-                noise_col.prop(inst, "noise_enabled", text="Noise")
+                noise_head = noise_col.row(align=True)
+                noise_head.prop(inst, "noise_enabled", text="Noise")
+                _draw_copy_paste(noise_head, "noise")
                 if inst.noise_enabled:
                     noise_col.prop(inst, "noise_strength_pos")
                     noise_col.prop(inst, "noise_strength_rot")
@@ -255,6 +273,16 @@ class KINEMA_PT_main(bpy.types.Panel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _draw_copy_paste(layout, category: str) -> None:
+    """セクションヘッダ用の Copy / Paste アイコン 2 つ。"""
+    right = layout.row(align=True)
+    right.alignment = "RIGHT"
+    cpy = right.operator("kinema.copy_settings", text="", icon="COPYDOWN")
+    cpy.category = category
+    pst = right.operator("kinema.paste_settings", text="", icon="PASTEDOWN")
+    pst.category = category
+
 
 def _cineflow_enabled() -> bool:
     addons = bpy.context.preferences.addons
