@@ -7,6 +7,7 @@ Instance に設定された Follow / LookAt / Noise を毎フレーム適用す�
 
 from __future__ import annotations
 
+import math
 import time
 
 from ..utils import refs
@@ -61,7 +62,6 @@ def _apply_roll(cam_obj, roll_deg: float) -> None:
     if has_active_track_to:
         # Track To が効いている → roll は上書きされるのでスキップ
         return
-    import math
     try:
         cam_obj.rotation_euler[2] = math.radians(roll_deg)
     except Exception:

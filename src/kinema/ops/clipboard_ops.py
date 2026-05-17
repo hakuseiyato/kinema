@@ -21,6 +21,7 @@ import bpy
 from bpy.props import EnumProperty
 
 from ..utils import refs
+from ..utils import clipboard as cb
 from ._base import KinemaOperator
 
 
@@ -84,87 +85,27 @@ def _get_targets(inst, cam):
     return {"inst": inst, "cam_data": cam_data, "dof": dof}
 
 
-def _copy_fields(fields, targets) -> dict:
-    out: dict = {}
-    for kind, attr in fields:
-        target = targets.get(kind)
-        if target is None:
-            continue
-        try:
-            val = getattr(target, attr, None)
-            # FloatVector のような RNA 配列を JSON 化
-            if hasattr(val, "__iter__") and not isinstance(val, str):
-                val = list(val)
-            out[f"{kind}.{attr}"] = val
-        except Exception:
-            pass
-    return out
-
-
-def _paste_fields(fields, targets, data: dict) -> int:
-    count = 0
-    for kind, attr in fields:
-        target = targets.get(kind)
-        if target is None:
-            continue
-        key = f"{kind}.{attr}"
-        if key not in data:
-            continue
-        val = data[key]
-        try:
-            setattr(target, attr, val)
-            count += 1
-        except Exception:
-            pass
-    return count
-
-
-def _copy_object_ref(ref_def, targets) -> dict:
-    kind, attr = ref_def
-    target = targets.get(kind)
-    if target is None:
-        return {}
-    try:
-        obj = getattr(target, attr, None)
-        name = obj.name if obj is not None else ""
-    except Exception:
-        return {}
-    return {f"{kind}.{attr}__name": name}
-
-
-def _paste_object_ref(ref_def, targets, data: dict) -> int:
-    kind, attr = ref_def
-    target = targets.get(kind)
-    if target is None:
-        return 0
-    key = f"{kind}.{attr}__name"
-    if key not in data:
-        return 0
-    name = data[key]
-    obj = bpy.data.objects.get(name) if name else None
-    try:
-        setattr(target, attr, obj)
-        return 1
-    except Exception:
-        return 0
+def _resolve_obj(name: str):
+    """名前から bpy.data.objects を解決。空名は None。"""
+    return bpy.data.objects.get(name) if name else None
 
 
 def _serialize_category(category: str, inst, cam) -> dict:
     targets = _get_targets(inst, cam)
     out: dict = {}
     if category in ("all", "pose"):
-        out.update(_copy_fields(_POSE_FIELDS, targets))
+        out.update(cb.copy_fields(_POSE_FIELDS, targets))
     if category in ("all", "dof"):
-        out.update(_copy_fields(_DOF_FIELDS, targets))
-        out.update(_copy_object_ref(_DOF_OBJECT_REF, targets))
+        out.update(cb.copy_fields(_DOF_FIELDS, targets))
+        out.update(cb.copy_object_ref(_DOF_OBJECT_REF, targets))
     if category in ("all", "follow"):
-        out.update(_copy_fields(_FOLLOW_FIELDS, targets))
-        out.update(_copy_object_ref(_FOLLOW_OBJECT_REF, targets))
+        out.update(cb.copy_fields(_FOLLOW_FIELDS, targets))
+        out.update(cb.copy_object_ref(_FOLLOW_OBJECT_REF, targets))
     if category in ("all", "lookat"):
-        out.update(_copy_fields(_LOOKAT_FIELDS, targets))
-        out.update(_copy_object_ref(_LOOKAT_OBJECT_REF, targets))
+        out.update(cb.copy_fields(_LOOKAT_FIELDS, targets))
+        out.update(cb.copy_object_ref(_LOOKAT_OBJECT_REF, targets))
     if category in ("all", "noise"):
-        out.update(_copy_fields(_NOISE_FIELDS, targets))
+        out.update(cb.copy_fields(_NOISE_FIELDS, targets))
     return out
 
 
@@ -172,18 +113,18 @@ def _apply_category(category: str, data: dict, inst, cam) -> int:
     targets = _get_targets(inst, cam)
     count = 0
     if category in ("all", "pose"):
-        count += _paste_fields(_POSE_FIELDS, targets, data)
+        count += cb.paste_fields(_POSE_FIELDS, targets, data)
     if category in ("all", "dof"):
-        count += _paste_fields(_DOF_FIELDS, targets, data)
-        count += _paste_object_ref(_DOF_OBJECT_REF, targets, data)
+        count += cb.paste_fields(_DOF_FIELDS, targets, data)
+        count += cb.paste_object_ref(_DOF_OBJECT_REF, targets, data, _resolve_obj)
     if category in ("all", "follow"):
-        count += _paste_fields(_FOLLOW_FIELDS, targets, data)
-        count += _paste_object_ref(_FOLLOW_OBJECT_REF, targets, data)
+        count += cb.paste_fields(_FOLLOW_FIELDS, targets, data)
+        count += cb.paste_object_ref(_FOLLOW_OBJECT_REF, targets, data, _resolve_obj)
     if category in ("all", "lookat"):
-        count += _paste_fields(_LOOKAT_FIELDS, targets, data)
-        count += _paste_object_ref(_LOOKAT_OBJECT_REF, targets, data)
+        count += cb.paste_fields(_LOOKAT_FIELDS, targets, data)
+        count += cb.paste_object_ref(_LOOKAT_OBJECT_REF, targets, data, _resolve_obj)
     if category in ("all", "noise"):
-        count += _paste_fields(_NOISE_FIELDS, targets, data)
+        count += cb.paste_fields(_NOISE_FIELDS, targets, data)
     return count
 
 
@@ -263,6 +204,9 @@ class KINEMA_OT_paste_settings(KinemaOperator):
             data = json.loads(raw)
         except Exception as exc:
             self.report({"ERROR"}, f"クリップボード読込失敗: {exc}")
+            return {"CANCELLED"}
+        if not isinstance(data, dict) or not data:
+            self.report({"WARNING"}, "クリップボードが空です")
             return {"CANCELLED"}
 
         count = _apply_category(self.category, data, inst, cam)

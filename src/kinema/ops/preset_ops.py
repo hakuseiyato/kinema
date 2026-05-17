@@ -129,7 +129,10 @@ class KINEMA_OT_load_preset(KinemaOperator):
         inst.source_preset = sel.name
         inst.collection_ref = new_coll
         inst.camera_ref = new_cam
+        # Preset のカスタムプロパティ kn_default_lens があれば優先して適用
         if new_cam is not None and new_cam.data is not None:
+            if sel.default_lens and sel.default_lens > 0.001:
+                new_cam.data.lens = float(sel.default_lens)
             inst.lens_mm = float(new_cam.data.lens)
 
         st.active_instance_index = len(st.instances) - 1

@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 
 import bpy
-from mathutils import Vector
+from mathutils import Euler, Vector
 
 from ..config import constants as C
 from ..utils import refs
@@ -72,9 +72,7 @@ def update_follow(cam_obj, params, dt: float) -> None:
 
     # Euler XYZ 回転で初期方向 (0, 1, 0) を回転 → カメラ位置の方向ベクトル
     # Y 軸回転は (0, 1, 0) を変えないので、ここでは X と Z だけ使う。
-    # Y は roll として後段で扱う（drawer ではなく Track To の up_axis 等）が、
-    # alpha 段階では未対応で OK（Y 軸スライダーは値を保持するだけ）。
-    from mathutils import Euler  # noqa: PLC0415
+    # Y は roll として後段で扱う（instance_dispatcher._apply_roll）。
     rot_mat = Euler((rot_x_rad, 0.0, rot_z_rad), "XYZ").to_matrix()
     dir_local = rot_mat @ Vector((0.0, 1.0, 0.0))
 

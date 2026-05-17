@@ -4,6 +4,41 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1.10] - 2026-05-17
+
+### 整理 / リファクタ
+- **遅延 import を module top に集約**:
+  `runtime/follow_lookat.py` の `from mathutils import Euler` と
+  `runtime/instance_dispatcher.py` の `import math` を関数内から
+  module top に移動
+- **`utils/clipboard.py` を新設**してコピペの純粋ロジックを bpy 非依存に分離
+  - `copy_fields` / `paste_fields` / `copy_object_ref` / `paste_object_ref`
+  - これに対する `tests/test_clipboard.py` を追加（10 ケース）
+- `ops/clipboard_ops.py` は新ヘルパを呼ぶラッパに
+- `ops/diagnostics_ops.py` の点検範囲を整理（cineflow アドオン状態 /
+  Preset Root / Instances Root / Keying Set の有無も追加表示）
+
+### 機能追加
+- **Preset の `kn_default_lens` を Load 時にカメラへ自動適用**
+  - 旧: 複製後のカメラの現在 lens をそのまま使う
+  - 新: PresetItem.default_lens が 0 以外なら、複製後の Camera Data.lens に
+    上書き → ユーザーは Preset 側に「使用想定の焦点距離」を仕込んでおける
+
+### 削除（dead code）
+- `config/constants.py` から `LEGACY_CF_*` 7 定数（cineflow importer 未実装）
+- `data/scene_settings.py` から `tag_filter`（UI 未配線、未使用）
+- `preferences.py` の未使用フィールド全て
+  （`keymap_backup_json` / `step_translate` / `step_rotate` /
+   `auto_enable_handler_after_cineflow_disable`）
+  → AddonPreferences は表示用の最小実装に縮小
+- 空の `src/kinema/importers/` ディレクトリを削除
+- `docs/alpha1_smoke_test.md` 削除（manual_smoke_test.md に置換）
+
+### ドキュメント
+- **`README.md` を現状機能リストに全面更新**
+- **`docs/manual_smoke_test.md` 新設**：12 セクションの動作確認手順 +
+  チェックリスト 18 項目で beta1 系の全機能をカバー
+
 ## [2.0.0-beta1.9] - 2026-05-16
 
 ### Fixed

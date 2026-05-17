@@ -24,14 +24,7 @@ KEY_FOLLOW_TARGET = "kn_follow_target"
 KEY_LOOKAT_TARGET = "kn_lookat_target"
 KEY_SCHEMA_VERSION = "kn_schema_version"
 
-# 旧 cineflow 互換キー（Importer のみが参照）
-LEGACY_CF_MODE = "cf_mode"
-LEGACY_CF_MODE_CATEGORY = "cf_category"
-LEGACY_CF_HAS_ANIM = "cf_has_anim"
-LEGACY_CF_DEFAULT_LENS = "cf_default_lens"
-LEGACY_CF_PREVIEW_END = "cf_preview_end"
-LEGACY_CF_FOLLOW_TARGET = "cf_follow_target"
-LEGACY_CF_LOOKAT_TARGET = "cf_lookat_target"
-
 # 現行スキーマバージョン（JSON I/O / マイグレーション判定で使用）
 CURRENT_SCHEMA_VERSION = 1
+# 旧 cineflow キー (LEGACY_CF_*) は importer 未実装のため削除済み。
+# 将来取り込みが必要になったら再追加する。

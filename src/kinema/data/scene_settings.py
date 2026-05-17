@@ -31,13 +31,6 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
         default=C.DEFAULT_INSTANCES_ROOT,
     )
 
-    # --- Filters (将来用、alpha1 では UI 未配線) ---
-    tag_filter: StringProperty(
-        name="Tag Filter",
-        description="カンマ区切りで AND マッチ（例: Cinematic, Hero）",
-        default="",
-    )
-
     # --- Preset 一覧（scan_presets の結果キャッシュ）---
     presets: CollectionProperty(type=preset_item.KinemaPresetItem)
     active_preset_index: IntProperty(name="Active Preset", default=0)
