@@ -170,35 +170,29 @@ class KINEMA_PT_main(bpy.types.Panel):
                 if refs.safe_object(inst.follow_target):
                     follow_col.prop(inst, "follow_distance")
 
-                    # Yaw / Pitch + プリセット
+                    # X / Y / Z 軸回転 + プリセット
                     angle_box = follow_col.box()
-                    angle_box.label(text="Orbit (yaw / pitch)", icon="ORIENTATION_GIMBAL")
-                    angle_box.prop(inst, "follow_yaw")
-                    angle_box.prop(inst, "follow_pitch")
+                    angle_box.label(text="Rotation (X / Y / Z)", icon="ORIENTATION_GIMBAL")
+                    angle_box.prop(inst, "follow_rot_x")
+                    angle_box.prop(inst, "follow_rot_y")
+                    angle_box.prop(inst, "follow_rot_z")
+                    angle_box.label(
+                        text="※ Y 軸 (Roll) は LookAt Target 無効時のみ反映",
+                        icon="INFO",
+                    )
                     preset_row = angle_box.row(align=True)
-                    for label, yaw, pitch in (
+                    for label, rx, rz in (
                         ("Front", 0.0, 0.0),
-                        ("Right", 90.0, 0.0),
-                        ("Back", 180.0, 0.0),
-                        ("Left", -90.0, 0.0),
+                        ("Right", 0.0, 90.0),
+                        ("Back", 0.0, 180.0),
+                        ("Left", 0.0, -90.0),
                     ):
                         op = preset_row.operator(
                             "kinema.set_follow_angle", text=label,
                         )
-                        op.yaw = yaw
-                        op.pitch = pitch
-                    preset_row2 = angle_box.row(align=True)
-                    for label, yaw, pitch in (
-                        ("Top↓", 0.0, 80.0),
-                        ("Bot↑", 0.0, -80.0),
-                        ("FrtUp", 0.0, 20.0),
-                        ("FrtDn", 0.0, -20.0),
-                    ):
-                        op = preset_row2.operator(
-                            "kinema.set_follow_angle", text=label,
-                        )
-                        op.yaw = yaw
-                        op.pitch = pitch
+                        op.rot_x = rx
+                        op.rot_y = 0.0
+                        op.rot_z = rz
 
                     follow_col.prop(inst, "follow_height")
                     follow_col.prop(inst, "follow_side")

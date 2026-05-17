@@ -45,37 +45,38 @@ def compute_dt(scene) -> float:
 # ---------------------------------------------------------------------------
 
 def update_follow(cam_obj, params, dt: float) -> None:
-    """カメラを follow_target の周りに **球面座標** で配置する。
+    """カメラを follow_target の周りに **Euler XYZ 軸回転** で配置する。
 
     params に以下の属性を要求:
-      follow_target, follow_distance, follow_yaw, follow_pitch,
+      follow_target, follow_distance, follow_rot_x, follow_rot_y, follow_rot_z,
       follow_height, follow_side, follow_damping
 
-    球面座標 (target ローカル空間):
-      - yaw=0   → +Y 方向 (target の正面、こちら向き)
-      - yaw=90  → +X 方向 (target の右)
-      - yaw=180 → -Y 方向 (target の背後、旧 TPS の挙動)
-      - yaw=-90 → -X 方向 (target の左)
-      - pitch>0 → 上から見下ろし
-      - pitch<0 → 下から見上げ
+    軸回転 (target ローカル空間):
+      - rot_x: X 軸回り（上下角）。正値=見下ろし、負値=見上げ
+      - rot_y: Y 軸回り（カメラのロール、位置には影響しない）
+      - rot_z: Z 軸回り（水平回り）。0=正面 (+Y), 90=右 (+X), 180=背後 (-Y), -90=左 (-X)
+
+    初期方向は target の +Y。これを XYZ 軸回転で動かしたベクトルが
+    カメラの相対方向ベクトルになる（Y 軸回転は (0,1,0) を回しても変わらないので
+    位置には影響しない＝ロール専用）。
     """
     target = refs.safe_object(getattr(params, "follow_target", None))
     if target is None or cam_obj is None:
         return
 
     dist = float(params.follow_distance)
-    yaw_rad = math.radians(float(getattr(params, "follow_yaw", 0.0)))
-    pitch_rad = math.radians(float(getattr(params, "follow_pitch", 0.0)))
+    rot_x_rad = math.radians(float(getattr(params, "follow_rot_x", 0.0)))
+    rot_z_rad = math.radians(float(getattr(params, "follow_rot_z", 0.0)))
     height = float(params.follow_height)
     side = float(params.follow_side)
 
-    # target ローカル空間での方向ベクトル
-    cos_pitch = math.cos(pitch_rad)
-    dir_local = Vector((
-        math.sin(yaw_rad) * cos_pitch,
-        math.cos(yaw_rad) * cos_pitch,
-        math.sin(pitch_rad),
-    ))
+    # Euler XYZ 回転で初期方向 (0, 1, 0) を回転 → カメラ位置の方向ベクトル
+    # Y 軸回転は (0, 1, 0) を変えないので、ここでは X と Z だけ使う。
+    # Y は roll として後段で扱う（drawer ではなく Track To の up_axis 等）が、
+    # alpha 段階では未対応で OK（Y 軸スライダーは値を保持するだけ）。
+    from mathutils import Euler  # noqa: PLC0415
+    rot_mat = Euler((rot_x_rad, 0.0, rot_z_rad), "XYZ").to_matrix()
+    dir_local = rot_mat @ Vector((0.0, 1.0, 0.0))
 
     # target の rotation 部分でワールド空間に変換
     rot_3x3 = target.matrix_world.to_3x3()
@@ -84,7 +85,6 @@ def update_follow(cam_obj, params, dt: float) -> None:
     # 接線右方向（カメラ視線と直交、ワールド上向きと外積）
     world_up = Vector((0.0, 0.0, 1.0))
     if abs(dir_world.dot(world_up)) > 0.999:
-        # 真上/真下を向いている場合は別の基準で右方向を決める
         tangent_right = (rot_3x3 @ Vector((1.0, 0.0, 0.0))).normalized()
     else:
         tangent_right = dir_world.cross(world_up).normalized()

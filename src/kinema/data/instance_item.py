@@ -75,23 +75,32 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
         name="Distance", description="target からの半径距離",
         default=5.0, min=0.0, update=_apply_now,
     )
-    # 全方位カメラ操作: 球面座標で target の周りを自由に回せる
-    follow_yaw: FloatProperty(
-        name="Yaw (deg)",
+    # Euler XYZ 軸回転で target 周りに自由配置
+    follow_rot_x: FloatProperty(
+        name="X 軸回転 (上下)",
         description=(
-            "target を中心とした水平角（度）。"
-            "0=正面, 90=右, 180=背後, -90=左"
-        ),
-        default=0.0, min=-360.0, max=360.0,
-        update=_apply_now,
-    )
-    follow_pitch: FloatProperty(
-        name="Pitch (deg)",
-        description=(
-            "target を中心とした仰角（度）。"
+            "target を中心とした X 軸回り（上下角）。"
             "0=水平, 正値=見下ろし（上から）, 負値=見上げ（下から）"
         ),
         default=0.0, min=-89.0, max=89.0,
+        update=_apply_now,
+    )
+    follow_rot_y: FloatProperty(
+        name="Y 軸回転 (ロール)",
+        description=(
+            "カメラのロール（傾き）。"
+            "target との位置関係には影響せず、画面の傾きだけ変える"
+        ),
+        default=0.0, min=-180.0, max=180.0,
+        update=_apply_now,
+    )
+    follow_rot_z: FloatProperty(
+        name="Z 軸回転 (水平回り)",
+        description=(
+            "target を中心とした Z 軸回り（水平角）。"
+            "0=正面, 90=右, 180=背後, -90=左"
+        ),
+        default=0.0, min=-360.0, max=360.0,
         update=_apply_now,
     )
     follow_height: FloatProperty(

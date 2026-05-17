@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta1.6] - 2026-05-16
+
+### Changed (breaking)
+- **Follow の角度パラメータを Yaw/Pitch から Euler XYZ にリネーム**
+  - 旧: `follow_yaw` / `follow_pitch`
+  - 新: `follow_rot_x`（X 軸回転 = 上下角）/ `follow_rot_y`（Y 軸回転 = ロール）
+        / `follow_rot_z`（Z 軸回転 = 水平回り）
+  - 同義だが Blender 流の Euler XYZ 表記に統一して直感性向上
+- `update_follow`: `mathutils.Euler((rot_x, 0, rot_z), 'XYZ')` で初期方向 (0,1,0)
+  を回転して target からの相対位置を計算する形に書き換え
+- `set_follow_angle` Operator の引数も `yaw/pitch` → `rot_x/rot_y/rot_z`
+- Duplicate Operator: 新フィールドをコピー対象に
+- UI: プリセットを Front / Right / Back / Left の 4 つに絞り、上下プリセットは
+  X 軸スライダーで対応してもらう方針に簡素化
+
+### Added
+- **Y 軸回転 (Roll)**: カメラの視線軸まわりの傾き。
+  - `instance_dispatcher._apply_roll`: Track To 制約が active なら効かない
+    （現バージョンの制約）ので、LookAt Target を空にしたシナリオで有効
+  - UI に「※ Y 軸 (Roll) は LookAt Target 無効時のみ反映」と注記
+
 ## [2.0.0-beta1.5] - 2026-05-16
 
 ### Added
