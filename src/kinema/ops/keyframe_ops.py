@@ -208,6 +208,101 @@ class KINEMA_OT_rebuild_keying_set(KinemaOperator):
         return {"FINISHED"}
 
 
+def _is_fcurve_unchanged(fc, epsilon: float = 1e-6) -> bool:
+    """f-curve の全 keyframe value がほぼ同一なら True（変化していない）。"""
+    kps = fc.keyframe_points
+    if not kps:
+        return False  # キー 0 個は対象外（削除しない）
+    values = [kp.co.y for kp in kps]
+    return (max(values) - min(values)) < epsilon
+
+
+def _clear_unchanged_in_action(action, predicate, removed_log: list) -> int:
+    """action.fcurves のうち predicate(fc) が True のものを削除。
+
+    predicate: data_path を受け取って「このパスは Active Instance 関連か」を返す。
+    """
+    if action is None:
+        return 0
+    removed = 0
+    for fc in list(action.fcurves):
+        if not predicate(fc.data_path):
+            continue
+        if _is_fcurve_unchanged(fc):
+            removed_log.append(f"{fc.data_path}[{fc.array_index}]")
+            try:
+                action.fcurves.remove(fc)
+                removed += 1
+            except Exception:
+                pass
+    return removed
+
+
+class KINEMA_OT_clear_unchanged_keys(KinemaOperator):
+    """Active Instance の f-curve のうち、値が変化していないものを削除。
+
+    Key All / Auto Keyframe で打ったが結果的に動かなかったプロパティを掃除
+    する用途。Camera Object / Camera Data / Camera Data.dof / scene.kinema.
+    instances[N].* の全てを走査する。
+    """
+    bl_idname = "kinema.clear_unchanged_keys"
+    bl_label = "Clear Unchanged Keys"
+    bl_description = (
+        "Active Instance に紐づく f-curve のうち、値が一切変化していないものを"
+        "削除する（Key All で打ったが動かなかった分の掃除）"
+    )
+
+    def run(self, context):
+        scene = context.scene
+        st = scene.kinema
+        idx = st.active_instance_index
+        if idx < 0 or idx >= len(st.instances):
+            self.report({"WARNING"}, "Instance が選択されていません")
+            return {"CANCELLED"}
+        inst = st.instances[idx]
+        cam = refs.safe_object(inst.camera_ref)
+
+        removed_log: list = []
+        total = 0
+
+        # Camera Object の f-curve
+        if cam is not None and cam.animation_data is not None:
+            total += _clear_unchanged_in_action(
+                cam.animation_data.action,
+                lambda p: True,  # Camera 専用 action なので全 f-curve 対象
+                removed_log,
+            )
+
+        # Camera Data の f-curve（dof.* を含む）
+        if cam is not None and cam.data is not None and cam.data.animation_data is not None:
+            total += _clear_unchanged_in_action(
+                cam.data.animation_data.action,
+                lambda p: True,
+                removed_log,
+            )
+
+        # Scene の f-curve（kinema.instances[idx].* に該当するもの）
+        scene_prefix = f"kinema.instances[{idx}]."
+        if scene.animation_data is not None:
+            total += _clear_unchanged_in_action(
+                scene.animation_data.action,
+                lambda p: p.startswith(scene_prefix),
+                removed_log,
+            )
+
+        if total == 0:
+            self.report({"INFO"}, "Cleanup: 変化のない f-curve はありませんでした")
+        else:
+            self.report(
+                {"INFO"},
+                f"Cleanup: {total} unchanged f-curves removed "
+                f"({', '.join(removed_log[:3])}"
+                + (" ..." if len(removed_log) > 3 else "")
+                + ")",
+            )
+        return {"FINISHED"}
+
+
 class KINEMA_OT_toggle_auto_keyframe(KinemaOperator):
     """Blender 標準の Auto Keyframe (赤丸) を kinema パネルからトグル。"""
     bl_idname = "kinema.toggle_auto_keyframe"

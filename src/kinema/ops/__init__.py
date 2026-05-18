@@ -39,6 +39,7 @@ _CLASSES = (
     handler_ops.KINEMA_OT_toggle_handlers,
     diagnostics_ops.KINEMA_OT_run_diagnostics,
     keyframe_ops.KINEMA_OT_keyframe_all,
+    keyframe_ops.KINEMA_OT_clear_unchanged_keys,
     keyframe_ops.KINEMA_OT_rebuild_keying_set,
     keyframe_ops.KINEMA_OT_toggle_auto_keyframe,
     clipboard_ops.KINEMA_OT_copy_settings,

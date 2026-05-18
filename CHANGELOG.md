@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.2] - 2026-05-17
+
+### Added
+- **Cleanup Unchanged Keys** (`KINEMA_OT_clear_unchanged_keys`):
+  Active Instance に紐づく f-curve のうち、全 keyframe の値が同一
+  （変化していない）ものを削除する。Key All で一括キーした後、結果的に
+  動かなかったプロパティを掃除する用途
+  - 走査対象: Camera Object / Camera Data / scene.kinema.instances[idx].*
+  - 判定: `max(values) - min(values) < 1e-6` で全キー同値かを確認
+  - UI: Active Instance ヘッダの Key All ボタンの隣に KEY_DEHLT アイコンで配置
+  - Info に削除した f-curve のパスを最大 3 件表示
+
 ## [2.0.0-beta2.1] - 2026-05-17
 
 ### Added

@@ -152,6 +152,9 @@ class KINEMA_PT_main(bpy.types.Panel):
                 )
                 key_row.operator("kinema.keyframe_all", text="Key All", icon="KEY_HLT")
                 key_row.operator(
+                    "kinema.clear_unchanged_keys", text="", icon="KEY_DEHLT",
+                )
+                key_row.operator(
                     "kinema.rebuild_keying_set", text="", icon="KEYINGSET",
                 )
                 # 一括コピペ
