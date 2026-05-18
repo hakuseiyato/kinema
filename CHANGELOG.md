@@ -4,6 +4,38 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.4] - 2026-05-17
+
+### Added — Round A (健全性 + 小 UX)
+- **load_post 健全性チェック**: `.blend` 読込時に各 Scene の
+  `active_instance_index` / `active_preset_index` を範囲内に補正、
+  参照切れ Instance の件数を System Console に warning 出力
+- **Cleanup Unchanged Keys の確認ダイアログ**: invoke で `invoke_props_dialog`
+  を出し、削除内容を事前確認できる
+- **Auto Keyframe ON 時の視覚強調**: Active Instance ボックスを赤系
+  (`alert = True`) + ヘッダに `● REC` プレフィックス
+- **Diagnostics 出力をパネル内に貼り付け**: `WindowManager.kinema_clipboard.
+  diag_log` に Run 結果を保存し、パネルの Diagnostics ボックス内に行ごと表示
+  （System Console を開かなくても見える）
+- **Auto Preview on Select**: Instance リスト切替で `scene.camera` も自動切替
+  （`auto_preview_on_select` トグルで ON/OFF、Instances ヘッダに目アイコン）
+- **Instance リストの並べ替え**（`KINEMA_OT_move_instance`）: リスト横の
+  上下三角ボタンで Active を Up/Down 移動
+
+### Added — Round B (機能拡張)
+- **Paste to Selected**: Copy/Paste の paste 側に `target` Enum を追加。
+  Outliner / Viewport で選択中のカメラに紐づく **全 Instance に一括 paste**。
+  各セクションヘッダに従来の Paste アイコンに加え GROUP_VERTEX アイコンを追加
+  Lock 中の Instance は paste skip
+- **JSON Import モード**: `replace / merge / append` の 3 択
+  - **APPEND**: 既存 Instance に追加（従来動作）
+  - **MERGE**: 名前一致した Instance に上書き、無いものは追加
+  - **REPLACE**: 既存全削除してから読込
+- **Bake Camera Animation** (`KINEMA_OT_bake_animation`): Active Instance の
+  カメラを `scene.frame_start〜frame_end` で visual keying ベイク。
+  Follow/LookAt/Noise の damping 効果を毎フレームの keyframe として焼き込み、
+  独立した f-curve として後段で編集できる状態にする。確認ダイアログ付き
+
 ## [2.0.0-beta2.3] - 2026-05-17
 
 ### Fixed

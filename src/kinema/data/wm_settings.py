@@ -23,6 +23,9 @@ class KinemaClipboard(bpy.types.PropertyGroup):
     noise_json: StringProperty(name="Noise", default="")
     all_json: StringProperty(name="All", default="")
 
+    # Diagnostics の出力（最新 Run の結果。\n 区切り）
+    diag_log: StringProperty(name="Diagnostics Log", default="")
+
 
 def register() -> None:
     bpy.utils.register_class(KinemaClipboard)

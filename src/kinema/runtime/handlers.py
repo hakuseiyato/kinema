@@ -39,8 +39,41 @@ def kinema_depsgraph_update_post(scene, depsgraph):  # noqa: ARG001
 
 @persistent
 def kinema_load_post(_dummy):
-    """`.blend` 読込時のセッション状態リセット。"""
+    """`.blend` 読込時のセッション状態リセット + 健全性チェック。
+
+    - dispatcher キャッシュをクリア
+    - 各 Scene の active_instance_index / active_preset_index を範囲内に補正
+    - 参照切れ Instance（collection_ref と camera_ref がどちらも切れた）件数を
+      System Console に warning ログ（破壊はしない）
+    """
     instance_dispatcher.reset_state()
+    try:
+        from ..utils import refs  # noqa: PLC0415
+        for scene in bpy.data.scenes:
+            st = getattr(scene, "kinema", None)
+            if st is None:
+                continue
+            # index 範囲補正
+            max_inst = max(0, len(st.instances) - 1)
+            if st.active_instance_index > max_inst:
+                st.active_instance_index = max_inst
+            max_preset = max(0, len(st.presets) - 1)
+            if st.active_preset_index > max_preset:
+                st.active_preset_index = max_preset
+            # 参照切れカウント（破壊しない、ログのみ）
+            broken = sum(
+                1 for inst in st.instances
+                if refs.safe_collection(inst.collection_ref) is None
+                and refs.safe_object(inst.camera_ref) is None
+            )
+            if broken:
+                print(
+                    f"[kinema] load_post: Scene '{scene.name}' に参照切れ "
+                    f"Instance が {broken} 件あります。"
+                    f"Properties > Scene > Kinema > Refresh Instances を実行してください"
+                )
+    except Exception as exc:
+        print(f"[kinema] load_post 健全性チェック失敗: {exc}")
 
 
 # (window_manager.kinema は session-only なので load_post で host pointer 等を

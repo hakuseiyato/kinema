@@ -106,4 +106,12 @@ class KINEMA_OT_run_diagnostics(KinemaOperator):
         for line in lines:
             print(f"[kinema:diagnostics] {line}")
             self.report({"INFO"}, line)
+
+        # パネル内表示用に WM clipboard の diag_log に貼り付け
+        try:
+            wm = context.window_manager
+            if hasattr(wm, "kinema_clipboard"):
+                wm.kinema_clipboard.diag_log = "\n".join(lines)
+        except Exception:
+            pass
         return {"FINISHED"}

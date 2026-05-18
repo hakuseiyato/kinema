@@ -118,15 +118,26 @@ class KINEMA_PT_main(bpy.types.Panel):
         inst_box = layout.box()
         row = inst_box.row(align=True)
         row.label(text=f"Instances ({len(st.instances)})", icon="OUTLINER_OB_CAMERA")
+        row.prop(
+            st, "auto_preview_on_select", text="",
+            icon="HIDE_OFF" if st.auto_preview_on_select else "HIDE_ON",
+        )
         row.operator("kinema.duplicate_instance", text="", icon="DUPLICATE")
         row.operator("kinema.refresh_instances", text="", icon="FILE_REFRESH")
 
-        inst_box.template_list(
+        # リスト + 並べ替えボタン
+        list_row = inst_box.row(align=True)
+        list_row.template_list(
             "KINEMA_UL_instances", "",
             st, "instances",
             st, "active_instance_index",
             rows=4,
         )
+        side = list_row.column(align=True)
+        up = side.operator("kinema.move_instance", text="", icon="TRIA_UP")
+        up.direction = "UP"
+        dn = side.operator("kinema.move_instance", text="", icon="TRIA_DOWN")
+        dn.direction = "DOWN"
 
         # --- Selected instance detail ---
         if 0 <= st.active_instance_index < len(st.instances):
@@ -136,10 +147,17 @@ class KINEMA_PT_main(bpy.types.Panel):
                 detail = layout.box()
                 # Lock 中は中身を編集不可（灰色）
                 detail.enabled = not getattr(inst, "locked", False)
+                # Auto Keyframe ON 中は警告色で目立たせる
+                ts_auto_kf = scene.tool_settings.use_keyframe_insert_auto
+                if ts_auto_kf:
+                    detail.alert = True
                 head = detail.row(align=True)
                 head.enabled = True  # ヘッダは常に有効
                 lock_icon = "LOCKED" if inst.locked else "DOT"
-                head.label(text=f"Active: {inst.name}", icon=lock_icon)
+                label_text = f"Active: {inst.name}"
+                if ts_auto_kf:
+                    label_text = "● REC  " + label_text
+                head.label(text=label_text, icon=lock_icon)
                 # Key 関連ボタン
                 key_row = head.row(align=True)
                 key_row.alignment = "RIGHT"
@@ -153,6 +171,9 @@ class KINEMA_PT_main(bpy.types.Panel):
                 key_row.operator("kinema.keyframe_all", text="Key All", icon="KEY_HLT")
                 key_row.operator(
                     "kinema.clear_unchanged_keys", text="", icon="KEY_DEHLT",
+                )
+                key_row.operator(
+                    "kinema.bake_animation", text="", icon="REC",
                 )
                 key_row.operator(
                     "kinema.rebuild_keying_set", text="", icon="KEYINGSET",
@@ -288,19 +309,49 @@ class KINEMA_PT_main(bpy.types.Panel):
         diag_row.operator("kinema.run_diagnostics", text="Run", icon="PLAY")
         diag_row.operator("kinema.toggle_handlers", text="", icon="FILE_REFRESH")
 
+        # 最新 Run の出力をパネル内に貼り付け
+        wm = context.window_manager
+        if hasattr(wm, "kinema_clipboard"):
+            log = wm.kinema_clipboard.diag_log
+            if log:
+                log_box = diag_box.box()
+                log_col = log_box.column(align=True)
+                log_col.scale_y = 0.8
+                for line in log.split("\n"):
+                    tag = "OK"
+                    icon = "CHECKMARK"
+                    if "[NG]" in line:
+                        icon = "ERROR"
+                    elif "[WARN]" in line:
+                        icon = "INFO"
+                    elif "[--]" in line:
+                        icon = "BLANK1"
+                    log_col.label(text=line, icon=icon)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _draw_copy_paste(layout, category: str) -> None:
-    """セクションヘッダ用の Copy / Paste アイコン 2 つ。"""
+    """セクションヘッダ用の Copy / Paste アイコン群。
+
+    Paste は 2 種:
+      - PASTEDOWN: Active Instance のみ
+      - PASTEDOWN_MULTIPLE: Outliner で選択中のカメラに紐づく全 Instance
+    """
     right = layout.row(align=True)
     right.alignment = "RIGHT"
     cpy = right.operator("kinema.copy_settings", text="", icon="COPYDOWN")
     cpy.category = category
     pst = right.operator("kinema.paste_settings", text="", icon="PASTEDOWN")
     pst.category = category
+    pst.target = "ACTIVE"
+    pst_sel = right.operator(
+        "kinema.paste_settings", text="", icon="GROUP_VERTEX",
+    )
+    pst_sel.category = category
+    pst_sel.target = "SELECTED"
 
 
 def _cineflow_enabled() -> bool:

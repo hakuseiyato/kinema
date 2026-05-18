@@ -186,6 +186,31 @@ class KINEMA_OT_apply_lens(KinemaOperator):
         return {"FINISHED"}
 
 
+class KINEMA_OT_move_instance(KinemaOperator):
+    """Instance リスト内で Active を 1 つ上 / 下に動かす。"""
+    bl_idname = "kinema.move_instance"
+    bl_label = "Move Instance"
+    bl_description = "選択中の Instance をリスト上で並べ替える"
+
+    direction: bpy.props.EnumProperty(
+        items=(("UP", "Up", ""), ("DOWN", "Down", "")),
+        default="UP",
+    )
+
+    def run(self, context):
+        st = context.scene.kinema
+        idx = st.active_instance_index
+        n = len(st.instances)
+        if idx < 0 or idx >= n:
+            return {"CANCELLED"}
+        new_idx = idx - 1 if self.direction == "UP" else idx + 1
+        if new_idx < 0 or new_idx >= n:
+            return {"CANCELLED"}
+        st.instances.move(idx, new_idx)
+        st.active_instance_index = new_idx
+        return {"FINISHED"}
+
+
 class KINEMA_OT_refresh_instances(KinemaOperator):
     """Outliner で削除/リネームされた Instance を整理する。"""
     bl_idname = "kinema.refresh_instances"

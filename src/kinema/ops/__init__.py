@@ -16,6 +16,7 @@ from . import (
     clipboard_ops,
     io_ops,
     cineflow_import,
+    bake_ops,
 )
 
 
@@ -32,6 +33,7 @@ _CLASSES = (
     instance_ops.KINEMA_OT_preview_instance,
     instance_ops.KINEMA_OT_set_follow_angle,
     instance_ops.KINEMA_OT_apply_lens,
+    instance_ops.KINEMA_OT_move_instance,
     instance_ops.KINEMA_OT_refresh_instances,
     workspace_ops.KINEMA_OT_create_workspace,
     workspace_ops.KINEMA_OT_remove_workspace,
@@ -47,6 +49,7 @@ _CLASSES = (
     io_ops.KINEMA_OT_export_json,
     io_ops.KINEMA_OT_import_json,
     cineflow_import.KINEMA_OT_import_from_cineflow,
+    bake_ops.KINEMA_OT_bake_animation,
 )
 
 

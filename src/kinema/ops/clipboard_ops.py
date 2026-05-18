@@ -34,6 +34,21 @@ CATEGORY_ITEMS = (
     ("noise", "Noise", "Noise パラメータ"),
 )
 
+
+def _selected_instance_indices(scene) -> list[int]:
+    """Outliner / Viewport で選択中のカメラに紐づく Instance の index リスト。"""
+    selected_cams = {
+        obj for obj in bpy.context.selected_objects if obj.type == "CAMERA"
+    }
+    if not selected_cams:
+        return []
+    st = scene.kinema
+    out = []
+    for i, inst in enumerate(st.instances):
+        if inst.camera_ref in selected_cams:
+            out.append(i)
+    return out
+
 # 各カテゴリのフィールド定義
 # (target_kind, attr_name) target_kind: "inst" | "cam_data" | "dof"
 _POSE_FIELDS = (
@@ -176,23 +191,41 @@ class KINEMA_OT_copy_settings(KinemaOperator):
         return {"FINISHED"}
 
 
+_TARGET_ITEMS = (
+    ("ACTIVE", "Active only", "Active Instance のみ"),
+    ("SELECTED", "Selected", "Outliner / Viewport で選択中のカメラに紐づく全 Instance"),
+)
+
+
 class KINEMA_OT_paste_settings(KinemaOperator):
     """クリップボードに保存された設定を Active Instance に適用。"""
     bl_idname = "kinema.paste_settings"
     bl_label = "Paste Settings"
-    bl_description = "クリップボードの設定を Active Instance に適用"
+    bl_description = "クリップボードの設定を Active / Selected Instance に適用"
 
     category: EnumProperty(items=CATEGORY_ITEMS, default="all")
+    target: EnumProperty(items=_TARGET_ITEMS, default="ACTIVE")
 
     def run(self, context):
         scene = context.scene
         st = scene.kinema
-        idx = st.active_instance_index
-        if idx < 0 or idx >= len(st.instances):
-            self.report({"WARNING"}, "Instance が選択されていません")
+
+        # ターゲット index 群を決定
+        if self.target == "SELECTED":
+            indices = _selected_instance_indices(scene)
+            if not indices:
+                # 選択無しなら Active にフォールバック
+                indices = [st.active_instance_index] if (
+                    0 <= st.active_instance_index < len(st.instances)
+                ) else []
+        else:
+            indices = [st.active_instance_index] if (
+                0 <= st.active_instance_index < len(st.instances)
+            ) else []
+
+        if not indices:
+            self.report({"WARNING"}, "対象 Instance がありません")
             return {"CANCELLED"}
-        inst = st.instances[idx]
-        cam = refs.safe_object(inst.camera_ref)
 
         clipboard = context.window_manager.kinema_clipboard
         slot = _slot_attr(self.category)
@@ -209,9 +242,17 @@ class KINEMA_OT_paste_settings(KinemaOperator):
             self.report({"WARNING"}, "クリップボードが空です")
             return {"CANCELLED"}
 
-        count = _apply_category(self.category, data, inst, cam)
+        total_count = 0
+        for idx in indices:
+            inst = st.instances[idx]
+            if getattr(inst, "locked", False):
+                continue  # Lock 中は skip
+            cam = refs.safe_object(inst.camera_ref)
+            total_count += _apply_category(self.category, data, inst, cam)
+
         self.report(
             {"INFO"},
-            f"Pasted [{self.category}] into '{inst.name}' ({count} fields)",
+            f"Pasted [{self.category}] into {len(indices)} instance(s) "
+            f"({total_count} fields)",
         )
         return {"FINISHED"}

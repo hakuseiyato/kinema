@@ -53,12 +53,19 @@ def _on_active_instance_changed(self, context):
     except Exception:
         pass
 
-    # 2) Outliner 連動
+    # 2) Outliner 連動 + Auto Preview
     try:
         idx = self.active_instance_index
         if 0 <= idx < len(self.instances):
             cam = self.instances[idx].camera_ref
             _select_only_object(context, cam)
+            # Auto Preview: 該当カメラを scene.camera に設定（OFF にしてもらえれば抑止可能）
+            if getattr(self, "auto_preview_on_select", True):
+                try:
+                    if cam is not None and cam.type == "CAMERA":
+                        context.scene.camera = cam
+                except Exception:
+                    pass
     except Exception:
         pass
 
