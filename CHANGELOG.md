@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.3] - 2026-05-17
+
+### Fixed
+- **Clear Unchanged Keys が AttributeError**:
+  `'Action' object has no attribute 'fcurves'`。Blender 4.4+ で Action が
+  **Layered Actions** に移行し `action.fcurves` が廃止されたため。
+  `_iter_fcurves(action)` を新設して、レガシー API (`action.fcurves`) と
+  新 API (`action.layers[].strips[].channelbag(slot).fcurves`) を両対応
+  - (container, fcurve) のタプルで yield して、削除時の container.remove()
+    も両 API で動くようにした
+
 ## [2.0.0-beta2.2] - 2026-05-17
 
 ### Added

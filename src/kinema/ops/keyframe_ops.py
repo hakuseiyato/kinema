@@ -217,21 +217,64 @@ def _is_fcurve_unchanged(fc, epsilon: float = 1e-6) -> bool:
     return (max(values) - min(values)) < epsilon
 
 
+def _iter_fcurves(action):
+    """Action から (container, fcurve) を yield する。
+
+    Blender 4.4+ で Action は Layered Actions に移行し `action.fcurves` が
+    廃止された。レガシー API と新 API (layers/strips/channelbag) の両対応。
+    container には .remove(fc) を呼べる collection を渡す（削除時に必要）。
+    """
+    if action is None:
+        return
+    # レガシー API (Blender 4.3 以前 / action.fcurves が直接存在)
+    if hasattr(action, "fcurves"):
+        container = action.fcurves
+        for fc in list(container):
+            yield container, fc
+        return
+    # 新 API (Blender 4.4+ Layered Actions)
+    layers = getattr(action, "layers", None) or []
+    slots = list(getattr(action, "slots", None) or [])
+    for layer in layers:
+        strips = getattr(layer, "strips", None) or []
+        for strip in strips:
+            for slot in slots:
+                cb = None
+                try:
+                    cb = strip.channelbag(slot)
+                except Exception:
+                    try:
+                        cb = strip.channelbag(slot, ensure=False)
+                    except Exception:
+                        cb = None
+                if cb is None:
+                    continue
+                container = getattr(cb, "fcurves", None)
+                if container is None:
+                    continue
+                for fc in list(container):
+                    yield container, fc
+
+
 def _clear_unchanged_in_action(action, predicate, removed_log: list) -> int:
-    """action.fcurves のうち predicate(fc) が True のものを削除。
+    """action 内の f-curve のうち predicate(data_path) が True のものを削除。
 
     predicate: data_path を受け取って「このパスは Active Instance 関連か」を返す。
     """
     if action is None:
         return 0
     removed = 0
-    for fc in list(action.fcurves):
-        if not predicate(fc.data_path):
+    for container, fc in _iter_fcurves(action):
+        try:
+            data_path = fc.data_path
+        except Exception:
+            continue
+        if not predicate(data_path):
             continue
         if _is_fcurve_unchanged(fc):
-            removed_log.append(f"{fc.data_path}[{fc.array_index}]")
+            removed_log.append(f"{data_path}[{fc.array_index}]")
             try:
-                action.fcurves.remove(fc)
+                container.remove(fc)
                 removed += 1
             except Exception:
                 pass
