@@ -17,8 +17,24 @@ from . import follow_lookat, noise as noise_mod
 # 再帰防止フラグ
 _in_dispatch = False
 
+# Duplicate Operator など、複数プロパティを連続書込中に dispatch を全停止する
+# ための明示フラグ。書込終了後 1 度だけ dispatch するパターンで使う。
+_dispatch_suspended = False
+
 # バースト抑制用: 直近の dispatch 時刻
 _last_dispatch_time: dict[str, float] = {}
+
+
+def suspend_dispatch():
+    """`with` ブロック相当: dispatch を抑止する（バッチ書込開始時に呼ぶ）。"""
+    global _dispatch_suspended
+    _dispatch_suspended = True
+
+
+def resume_dispatch():
+    """dispatch 抑止を解除する。"""
+    global _dispatch_suspended
+    _dispatch_suspended = False
 
 # バースト抑制閾値（秒）。240Hz 上限。
 _BURST_MIN_INTERVAL = 1.0 / 240.0
@@ -100,6 +116,8 @@ def dispatch(scene, force: bool = False) -> None:
     global _in_dispatch
     if _in_dispatch:
         return
+    if _dispatch_suspended:
+        return  # Duplicate などのバッチ書込中
     if not hasattr(scene, "kinema"):
         return
 

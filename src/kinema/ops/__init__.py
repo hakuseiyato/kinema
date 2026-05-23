@@ -30,6 +30,7 @@ _CLASSES = (
     preset_ops.KINEMA_OT_toggle_preset_group_collapse,
     preset_ops.KINEMA_OT_load_preset,
     instance_ops.KINEMA_OT_duplicate_instance,
+    instance_ops.KINEMA_OT_detach_follow,
     instance_ops.KINEMA_OT_unload_instance,
     instance_ops.KINEMA_OT_preview_instance,
     instance_ops.KINEMA_OT_set_follow_angle,

@@ -227,6 +227,10 @@ class KINEMA_PT_main(bpy.types.Panel):
                 follow_col = detail.column(align=True)
                 follow_head = follow_col.row(align=True)
                 follow_head.label(text="Follow")
+                if refs.safe_object(inst.follow_target):
+                    follow_head.operator(
+                        "kinema.detach_follow", text="", icon="UNLINKED",
+                    )
                 _draw_copy_paste(follow_head, "follow")
                 follow_col.prop(inst, "follow_target", text="Target")
                 if refs.safe_object(inst.follow_target):

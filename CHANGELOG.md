@@ -4,6 +4,35 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.7] - 2026-05-17
+
+### Changed — Duplicate ルール再設計
+- **名前: ベース名 + `_NNN` の連番採番**
+  - `utils/naming.next_serial_from(name, existing)` 新設
+  - `Hero` → `Hero_001`、`Hero_001` → `Hero_002`、`Hero_001_001` → `Hero_001_002`
+  - 既存番号の最大値 + 1 を返すので「歯抜けがあってもまとめて埋めない」「suffix
+    増殖しない」
+- **Lock / Solo を複製先で両方リセット**: 「複製したのに編集できない」事故を防止
+- **source_preset を `copy of <元 Instance 名>`** に変更し UI 上で識別可能に
+- **複製中の dispatcher を suspend**:
+  - `runtime/instance_dispatcher.suspend_dispatch()` / `resume_dispatch()` を新設
+  - Duplicate 中はバッチ書込中の中間状態で Follow 計算が走らない
+  - 終了後 `dispatch(scene, force=True)` で 1 度だけ整合させる
+- 名前の同期: `inst.name` を最後に設定して、update callback で Collection /
+  Camera を正しい名前にリネーム
+
+### Added
+- **`KINEMA_OT_detach_follow`**: Active Instance の Follow Target を解除し、
+  現在のカメラ位置・回転を「凍結」する。dispatcher が follow 計算を skip する
+  ので、ユーザーが手でカメラを動かした位置が保持される
+  - 確認ダイアログ付き
+  - `also_lookat` オプションで LookAt Target も同時解除可能
+  - Follow セクションヘッダに `UNLINKED` アイコンで配置（Follow Target が
+    set されているときだけ表示）
+
+### Tests
+- `tests/test_naming.py`: `next_serial_from` の 5 ケース追加（合計 12 ケース）
+
 ## [2.0.0-beta2.6] - 2026-05-17
 
 ### Added

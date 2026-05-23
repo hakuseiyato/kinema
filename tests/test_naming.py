@@ -36,6 +36,36 @@ def test_unique_name_many_conflicts():
     assert naming.next_unique_name("Shot", existing) == "Shot_011"
 
 
+def test_serial_from_basic():
+    # ベース名重複なし → そのまま
+    assert naming.next_serial_from("Hero", set()) == "Hero"
+
+
+def test_serial_from_base_exists():
+    # Hero だけある → Hero_001
+    assert naming.next_serial_from("Hero", {"Hero"}) == "Hero_001"
+
+
+def test_serial_from_numbered_input():
+    # Hero_001 を元にして次の連番
+    existing = {"Hero", "Hero_001"}
+    assert naming.next_serial_from("Hero_001", existing) == "Hero_002"
+
+
+def test_serial_from_skips_holes():
+    # Hero, Hero_001, Hero_005 → 次は Hero_006（max+1）
+    existing = {"Hero", "Hero_001", "Hero_005"}
+    assert naming.next_serial_from("Hero_001", existing) == "Hero_006"
+
+
+def test_serial_from_double_suffix():
+    # Hero_001_001 のような二重 suffix → "Hero_001" を base にして採番
+    existing = {"Hero", "Hero_001", "Hero_001_001"}
+    result = naming.next_serial_from("Hero_001_001", existing)
+    # base="Hero_001" の連番 → "Hero_001_002"
+    assert result == "Hero_001_002"
+
+
 if __name__ == "__main__":
     test_split_no_suffix()
     test_split_with_suffix()
