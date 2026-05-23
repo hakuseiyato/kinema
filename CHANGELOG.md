@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.6] - 2026-05-17
+
+### Added
+- **Instance UIList 上で名前を直接編集可能に**
+  - `data/instance_item._on_name_changed`: Instance.name 変更時に
+    対応する collection / camera オブジェクトも同名にリネーム
+  - 名前衝突時は Blender が `.001` を付けるので、結果を inst.name に
+    書き戻して整合
+  - 再帰防止フラグ (`_renaming_in_progress` set) で update callback の
+    無限ループを防止
+  - `ui/instances_view`: 名前 label を `row.prop(item, "name", emboss=False)`
+    に変更（ダブルクリックで編集モードに入る）
+
 ## [2.0.0-beta2.5] - 2026-05-17
 
 ### Added — カメラ別バッチレンダー

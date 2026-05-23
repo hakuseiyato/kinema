@@ -38,6 +38,47 @@ def _find_owner_scene(inst):
     return None
 
 
+# Instance.name の update callback で再帰防止のためのフラグ。
+# PropertyGroup 自体に属性を後付けできないので、モジュール内 set で管理。
+_renaming_in_progress: set = set()
+
+
+def _on_name_changed(self, context):
+    """Instance.name 変更時、対応する Collection と Camera も同名にリネーム。
+
+    Blender が衝突回避で `.001` を付けた場合は、その結果を inst.name に
+    書き戻して整合させる。再帰防止は `_renaming_in_progress` で管理。
+    """
+    uid = id(self)
+    if uid in _renaming_in_progress:
+        return
+    _renaming_in_progress.add(uid)
+    try:
+        new_name = self.name
+        if not new_name:
+            return
+        # Collection をリネーム
+        coll = self.collection_ref
+        if coll is not None and coll.name != new_name:
+            try:
+                coll.name = new_name
+                if coll.name != new_name:
+                    # Blender が衝突回避で別名にしたら inst.name もそれに合わせる
+                    self.name = coll.name
+                    return
+            except Exception:
+                pass
+        # Camera オブジェクトも同名にリネーム（衝突時は黙って許容）
+        cam = self.camera_ref
+        if cam is not None and cam.name != new_name:
+            try:
+                cam.name = new_name
+            except Exception:
+                pass
+    finally:
+        _renaming_in_progress.discard(uid)
+
+
 def _apply_now(self, context):
     """Instance プロパティが変わった時に即座に Follow/LookAt/Noise を 1 ステップ適用。
 
@@ -84,7 +125,15 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
     """1 つのロード済みプリセット = 1 行。"""
 
     # --- 識別 ---
-    name: StringProperty(name="Name", default="")
+    name: StringProperty(
+        name="Name",
+        description=(
+            "Instance 名。UIList でダブルクリックすると編集可能。"
+            "編集時は対応する Collection と Camera も同名にリネームされる"
+        ),
+        default="",
+        update=_on_name_changed,
+    )
     source_preset: StringProperty(name="Source Preset", default="")
     collection_ref: PointerProperty(name="Collection", type=bpy.types.Collection)
     camera_ref: PointerProperty(

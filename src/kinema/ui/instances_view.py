@@ -60,12 +60,12 @@ class KINEMA_UL_instances(bpy.types.UIList):
             row.label(text=f"{item.name} (Missing)", icon="ERROR")
             return
 
-        # メイン: コレクション名（実体）
-        main = coll.name if coll is not None else item.name
-        row.label(text=main, icon="OUTLINER_COLLECTION")
+        # メイン: Instance 名（ダブルクリックで編集可、コレクション/カメラも同名リネーム）
+        row.label(text="", icon="OUTLINER_COLLECTION")
+        row.prop(item, "name", text="", emboss=False)
 
         # ソースプリセット（複製元）
-        if item.source_preset and item.source_preset != main:
+        if item.source_preset and item.source_preset != item.name:
             row.label(text=f"← {item.source_preset}")
 
         # 重複警告
