@@ -75,6 +75,8 @@ def _on_active_preset_changed(self, context):
 
     `auto_preview_on_select` が True なら `scene.camera` も切替えてカメラビュー
     でフォーカスする（Instance 側と同じ挙動）。
+    `scene.camera` 切替後に dispatcher を呼んで Preset の事前設定をライブ
+    プレビュー適用する（`_apply_preview_preset` がトリガされる）。
     """
     try:
         idx = self.active_preset_index
@@ -85,10 +87,15 @@ def _on_active_preset_changed(self, context):
             cam = bpy.data.objects.get(item.name)
             if cam is not None and cam.type == "CAMERA":
                 _select_only_object(context, cam)
-                # Auto Preview: scene.camera も切替（Instance と共通設定）
                 if getattr(self, "auto_preview_on_select", True):
                     try:
                         context.scene.camera = cam
+                    except Exception:
+                        pass
+                    # Preset 設定をライブプレビュー適用
+                    try:
+                        from ..runtime import instance_dispatcher  # noqa: PLC0415
+                        instance_dispatcher.dispatch(context.scene, force=True)
                     except Exception:
                         pass
     except Exception:

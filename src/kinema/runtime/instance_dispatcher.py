@@ -62,6 +62,76 @@ def _resolve_lookat_target(inst):
     return None
 
 
+def _apply_preview_preset(scene) -> None:
+    """Active Preset の Camera Data.kinema_preset をライブプレビュー適用する。
+
+    判定:
+      - scene.kinema.active_preset_index が有効な Preset 行を指す
+      - その Camera オブジェクトが scene.camera と一致している
+        (= ユーザーが Auto Preview でこの Preset を見ている状態)
+      - その Camera が Instance としても Load 済みではない（Instance 側が優先）
+    上記が満たされた場合のみ、`cam.data.kinema_preset` のパラメータで
+    `update_follow / update_lookat / noise` を呼んで Camera を動かす。
+
+    これにより Load する前段階でも Preset の事前設定が「実機で動く」のを
+    確認できる。
+    """
+    import bpy  # noqa: PLC0415
+    st = getattr(scene, "kinema", None)
+    if st is None:
+        return
+    idx = st.active_preset_index
+    if idx < 0 or idx >= len(st.presets):
+        return
+    item = st.presets[idx]
+    if item.is_header:
+        return
+    cam = bpy.data.objects.get(item.name)
+    if cam is None or cam.type != "CAMERA" or cam.data is None:
+        return
+    # scene.camera が preset cam でなければプレビュー対象外
+    if scene.camera is not cam:
+        return
+    # 同じ Camera が Instance として Load 済みなら Instance 側が動かす
+    for inst in st.instances:
+        if refs.safe_object(inst.camera_ref) is cam:
+            return
+    cp = getattr(cam.data, "kinema_preset", None)
+    if cp is None:
+        return
+
+    dt = follow_lookat.compute_dt(scene)
+
+    # Follow
+    if refs.safe_object(cp.follow_target):
+        follow_lookat.update_follow(cam, cp, dt)
+
+    # LookAt （明示指定 > Follow Target 自動採用）
+    explicit = refs.safe_object(cp.lookat_target)
+    if explicit is not None:
+        effective_lookat = explicit
+    elif getattr(cp, "follow_auto_lookat", True):
+        effective_lookat = refs.safe_object(cp.follow_target)
+    else:
+        effective_lookat = None
+
+    roll_deg = float(getattr(cp, "follow_rot_y", 0.0))
+    if effective_lookat is not None:
+        follow_lookat.update_lookat_with_target(
+            cam, effective_lookat, cp.lookat_damping, dt, roll_deg=roll_deg,
+        )
+    else:
+        follow_lookat.cleanup_lookat_proxy(cam)
+        if abs(roll_deg) > 0.001:
+            try:
+                cam.rotation_euler[2] = math.radians(roll_deg)
+            except Exception:
+                pass
+
+    if cp.noise_enabled:
+        noise_mod.apply_noise_frame(cam, cp, scene.frame_current)
+
+
 def _apply_instances(scene) -> None:
     """Instance に対して Follow/LookAt/Noise を 1 ステップ適用。
 
@@ -133,5 +203,8 @@ def dispatch(scene, force: bool = False) -> None:
     _in_dispatch = True
     try:
         _apply_instances(scene)
+        # Active Preset の Camera が scene.camera のとき、Preset 設定で
+        # ライブプレビュー適用（Load 前のテスト用）
+        _apply_preview_preset(scene)
     finally:
         _in_dispatch = False

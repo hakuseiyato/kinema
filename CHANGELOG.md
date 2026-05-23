@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.11] - 2026-05-17
+
+### Fixed
+- **Preset 選択時にカメラが Instance と同じ挙動をしない問題を解消**
+  - 原因: `instance_dispatcher` は Instance 一覧しか走査していなかった
+    ため、Preset 側の事前設定（`cam.data.kinema_preset`）が反映されていなかった
+  - `runtime/instance_dispatcher._apply_preview_preset(scene)` を新設:
+    - Active Preset の Camera が `scene.camera` と一致しているときだけ
+      ライブプレビュー適用（render 中の他カメラ保護）
+    - 同じ Camera が Instance としても Load 済みなら Instance 側が優先
+    - Follow / LookAt (Roll 含む) / Noise を Instance と同じロジックで適用
+  - `dispatch()` の最後に `_apply_preview_preset` を呼ぶように
+  - `data/camera_preset.KinemaCameraPreset`: 全プロパティに `update=
+    _apply_preview_now` を仕込み、スライダー操作で即時プレビュー反映
+  - `data/scene_settings._on_active_preset_changed`: 行クリック時に
+    `dispatch(scene, force=True)` を明示呼出して、scene.camera 切替直後に
+    Preset 設定で Follow を効かせる
+
 ## [2.0.0-beta2.10] - 2026-05-17
 
 ### Added
