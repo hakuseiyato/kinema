@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.9] - 2026-05-17
+
+### Changed — Preset UIList の視認性向上
+- **グループヘッダ行**: scale_y=1.15 で背を高くし、`[N]` で件数を [] 括弧
+  表記に。ヘッダ名は ALL CAPS に変換
+- **カメラ行のアイコン変更**: `OUTLINER_OB_CAMERA` → `CAMERA_DATA`
+  - グループヘッダの黄色フォルダ (`OUTLINER_COLLECTION`) と色・形状で
+    明確に差別化
+- **インデント深さ調整**: グループ配下のカメラ行は BLANK1 を 2 段、root
+  直下は 1 段にして階層が一目でわかるように
+
+```
+[▼] 📁 TOP                                [4]   ← 高めの行 + 黄色フォルダ
+       📷 Hero                                   ← 緑カメラ + 深インデント
+       📷 Sub
+[▼] 📁 SIDE                               [2]
+       📷 Top1
+```
+
 ## [2.0.0-beta2.8] - 2026-05-17
 
 ### Changed — Duplicate 廃止 + Preset の事前設定機能
