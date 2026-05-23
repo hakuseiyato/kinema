@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import bpy
 
-from . import preset_item, instance_item, scene_settings, wm_settings
+from . import preset_item, instance_item, scene_settings, wm_settings, camera_preset
 
 
 _CLASSES = (
     # 子要素は親より先に register する必要がある
     preset_item.KinemaPresetItem,
     instance_item.KinemaInstanceItem,
+    camera_preset.KinemaCameraPreset,
     scene_settings.KinemaSceneSettings,
 )
 
@@ -25,11 +26,18 @@ def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.kinema = bpy.props.PointerProperty(type=scene_settings.KinemaSceneSettings)
+    bpy.types.Camera.kinema_preset = bpy.props.PointerProperty(
+        type=camera_preset.KinemaCameraPreset,
+    )
     wm_settings.register()
 
 
 def unregister() -> None:
     wm_settings.unregister()
+    try:
+        del bpy.types.Camera.kinema_preset
+    except Exception:
+        pass
     try:
         del bpy.types.Scene.kinema
     except Exception:

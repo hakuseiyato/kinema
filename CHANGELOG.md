@@ -4,6 +4,32 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.8] - 2026-05-17
+
+### Changed — Duplicate 廃止 + Preset の事前設定機能
+- **`KINEMA_OT_duplicate_instance` を廃止**: 複数 Instance が欲しい場合は
+  Preset を複数回 Load する運用に変更
+- **`bpy.types.Camera.kinema_preset`** (`KinemaCameraPreset` PropertyGroup) を
+  新設: Camera Data に紐づく事前設定として Follow / LookAt / Noise の全
+  パラメータを保持。`.blend` に永続化される
+- **`KINEMA_OT_load_preset`**: Load 時に複製元 Camera Data の `kinema_preset`
+  から Instance に Follow/LookAt/Noise 等をコピー（`_copy_camera_preset_to_instance`）
+- **Active Preset セクション**を Preset ボックス内に追加: Preset 選択時に
+  事前設定（Follow / LookAt / Noise / Shift / DoF）を **Load 前から編集** 可能。
+  「Load 時にこの設定が Instance にコピー」とラベル表示
+- **`_draw_camera_settings(layout, params, cam_data, kind)`** 共通描画ヘルパを
+  新設: Instance パネルと Preset パネルで同じ UI を再利用
+  - kind="preset" の場合は lens_mm / Copy/Paste / Detach Follow を非表示
+- UI クリーンアップ:
+  - Instance ヘッダ / 各行から Duplicate アイコンを削除
+  - 重複していた Lens/Shift/DoF/Follow/LookAt/Noise の描画を共通化
+
+### 移行ガイド
+- 旧 Duplicate の代替: **Outliner で Camera を Shift+D → Add Selected Cameras
+  で Preset 登録 → Load**。各 Preset は事前設定を独立に持てるので「複製」より
+  柔軟
+- Preset 側で Follow Target などを設定しておけば、Load した瞬間から動く
+
 ## [2.0.0-beta2.7] - 2026-05-17
 
 ### Changed — Duplicate ルール再設計

@@ -135,6 +135,41 @@ class KINEMA_OT_load_preset(KinemaOperator):
                 new_cam.data.lens = float(sel.default_lens)
             inst.lens_mm = float(new_cam.data.lens)
 
+        # 複製元 Camera Data の kinema_preset が事前設定を持っていれば
+        # Instance にコピーする（Follow/LookAt/Noise を最初から効かせる）
+        _copy_camera_preset_to_instance(src_cam, inst)
+
         st.active_instance_index = len(st.instances) - 1
         self.report({"INFO"}, f"Loaded: {new_coll.name} ({new_cam.name})")
         return {"FINISHED"}
+
+
+def _copy_camera_preset_to_instance(src_cam, inst) -> None:
+    """Preset の `cam.data.kinema_preset` の事前設定を Instance にコピー。
+
+    Preset 側が空 (デフォルト値) の場合は Instance のデフォルトのまま。
+    """
+    if src_cam is None or src_cam.data is None:
+        return
+    cp = getattr(src_cam.data, "kinema_preset", None)
+    if cp is None:
+        return
+    # Follow
+    inst.follow_target = cp.follow_target
+    inst.follow_distance = cp.follow_distance
+    inst.follow_rot_x = cp.follow_rot_x
+    inst.follow_rot_y = cp.follow_rot_y
+    inst.follow_rot_z = cp.follow_rot_z
+    inst.follow_height = cp.follow_height
+    inst.follow_side = cp.follow_side
+    inst.follow_damping = cp.follow_damping
+    inst.follow_auto_lookat = cp.follow_auto_lookat
+    # LookAt
+    inst.lookat_target = cp.lookat_target
+    inst.lookat_damping = cp.lookat_damping
+    # Noise
+    inst.noise_enabled = cp.noise_enabled
+    inst.noise_strength_pos = cp.noise_strength_pos
+    inst.noise_strength_rot = cp.noise_strength_rot
+    inst.noise_frequency = cp.noise_frequency
+    inst.noise_seed = cp.noise_seed

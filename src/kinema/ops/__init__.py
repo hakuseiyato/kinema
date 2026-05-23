@@ -29,7 +29,9 @@ _CLASSES = (
     preset_ops.KINEMA_OT_scan_presets,
     preset_ops.KINEMA_OT_toggle_preset_group_collapse,
     preset_ops.KINEMA_OT_load_preset,
-    instance_ops.KINEMA_OT_duplicate_instance,
+    # Duplicate Instance Operator は廃止 (beta2.8)。
+    # 複数欲しい場合は Preset を複数回 Load する運用に変更。
+    # Preset 側に事前設定 (KinemaCameraPreset) が持てるようになったため。
     instance_ops.KINEMA_OT_detach_follow,
     instance_ops.KINEMA_OT_unload_instance,
     instance_ops.KINEMA_OT_preview_instance,

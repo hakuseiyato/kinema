@@ -104,6 +104,29 @@ class KINEMA_PT_main(bpy.types.Panel):
         )
         preset_box.operator("kinema.load_preset", icon="IMPORT")
 
+        # --- Active Preset 事前設定（Load 前に編集可能） ---
+        if 0 <= st.active_preset_index < len(st.presets):
+            sel_preset = st.presets[st.active_preset_index]
+            if not sel_preset.is_header:
+                preset_cam_obj = bpy.data.objects.get(sel_preset.name)
+                if preset_cam_obj is not None and preset_cam_obj.type == "CAMERA":
+                    cp = getattr(preset_cam_obj.data, "kinema_preset", None)
+                    if cp is not None:
+                        cfg_box = preset_box.box()
+                        cfg_box.label(
+                            text=f"Preset config: {sel_preset.name}",
+                            icon="PRESET",
+                        )
+                        cfg_box.label(
+                            text="Load 時にこの設定が Instance にコピーされます",
+                            icon="INFO",
+                        )
+                        _draw_camera_settings(
+                            cfg_box, cp,
+                            cam_data=preset_cam_obj.data,
+                            kind="preset",
+                        )
+
         # 通常モードでも Source 追加系を畳んで配置（Root 準備済の時）
         if root_in_scene and root_has_children:
             add_row = preset_box.row(align=True)
@@ -122,7 +145,6 @@ class KINEMA_PT_main(bpy.types.Panel):
             st, "auto_preview_on_select", text="",
             icon="HIDE_OFF" if st.auto_preview_on_select else "HIDE_ON",
         )
-        row.operator("kinema.duplicate_instance", text="", icon="DUPLICATE")
         row.operator("kinema.refresh_instances", text="", icon="FILE_REFRESH")
 
         # リスト + 並べ替えボタン
@@ -188,114 +210,15 @@ class KINEMA_PT_main(bpy.types.Panel):
                 )
                 paste_all.category = "all"
 
-                # Lens & Shift (Pose カテゴリ)
-                pose_header = detail.row(align=True)
-                pose_header.label(text="Lens / Shift", icon="OBJECT_ORIGIN")
-                _draw_copy_paste(pose_header, "pose")
-
+                # Lens は Instance 独自（lens_mm との同期）
                 lens_row = detail.row(align=True)
                 lens_row.prop(inst, "lens_mm")
                 lens_row.operator("kinema.apply_lens", text="", icon="CHECKMARK")
 
-                if cam.data is not None:
-                    shift_row = detail.row(align=True)
-                    shift_row.prop(cam.data, "shift_x", text="X")
-                    shift_row.prop(cam.data, "shift_y", text="Y")
-
-                # Depth of Field（Camera Data.dof 直接編集）
-                if cam.data is not None:
-                    dof = cam.data.dof
-                    dof_box = detail.box()
-                    dof_head = dof_box.row(align=True)
-                    dof_head.prop(
-                        dof, "use_dof",
-                        text="Depth of Field", icon="CON_CAMERASOLVER",
-                    )
-                    _draw_copy_paste(dof_head, "dof")
-                    if dof.use_dof:
-                        dof_box.prop(dof, "focus_object", text="Focus Object")
-                        if dof.focus_object is None:
-                            dof_box.prop(dof, "focus_distance", text="Focus Distance")
-                        aperture = dof_box.column(align=True)
-                        aperture.label(text="Aperture")
-                        aperture.prop(dof, "aperture_fstop", text="F-Stop")
-                        aperture.prop(dof, "aperture_blades", text="Blades")
-                        aperture.prop(dof, "aperture_rotation", text="Rotation")
-                        aperture.prop(dof, "aperture_ratio", text="Ratio")
-
-                # Follow
-                follow_col = detail.column(align=True)
-                follow_head = follow_col.row(align=True)
-                follow_head.label(text="Follow")
-                if refs.safe_object(inst.follow_target):
-                    follow_head.operator(
-                        "kinema.detach_follow", text="", icon="UNLINKED",
-                    )
-                _draw_copy_paste(follow_head, "follow")
-                follow_col.prop(inst, "follow_target", text="Target")
-                if refs.safe_object(inst.follow_target):
-                    follow_col.prop(inst, "follow_distance")
-
-                    # X / Y / Z 軸回転 + プリセット
-                    angle_box = follow_col.box()
-                    angle_box.label(text="Rotation (X / Y / Z)", icon="ORIENTATION_GIMBAL")
-                    angle_box.prop(inst, "follow_rot_x")
-                    angle_box.prop(inst, "follow_rot_y")
-                    angle_box.prop(inst, "follow_rot_z")
-                    angle_box.label(
-                        text="※ Y 軸 (Roll) は LookAt Target 無効時のみ反映",
-                        icon="INFO",
-                    )
-                    preset_row = angle_box.row(align=True)
-                    for label, rx, rz in (
-                        ("Front", 0.0, 0.0),
-                        ("Right", 0.0, 90.0),
-                        ("Back", 0.0, 180.0),
-                        ("Left", 0.0, -90.0),
-                    ):
-                        op = preset_row.operator(
-                            "kinema.set_follow_angle", text=label,
-                        )
-                        op.rot_x = rx
-                        op.rot_y = 0.0
-                        op.rot_z = rz
-
-                    follow_col.prop(inst, "follow_height")
-                    follow_col.prop(inst, "follow_side")
-                    follow_col.prop(inst, "follow_damping")
-                    follow_col.prop(inst, "follow_auto_lookat")
-
-                # LookAt
-                look_col = detail.column(align=True)
-                look_head = look_col.row(align=True)
-                look_head.label(text="LookAt")
-                _draw_copy_paste(look_head, "lookat")
-                look_col.prop(inst, "lookat_target", text="Target")
-                # 明示指定がない場合に Follow Target を自動注視している旨を表示
-                if (
-                    not refs.safe_object(inst.lookat_target)
-                    and refs.safe_object(inst.follow_target)
-                    and inst.follow_auto_lookat
-                ):
-                    look_col.label(
-                        text=f"→ Auto: {inst.follow_target.name}",
-                        icon="HIDE_OFF",
-                    )
-                if refs.safe_object(inst.lookat_target) or (
-                    refs.safe_object(inst.follow_target) and inst.follow_auto_lookat
-                ):
-                    look_col.prop(inst, "lookat_damping")
-
-                # Noise
-                noise_col = detail.column(align=True)
-                noise_head = noise_col.row(align=True)
-                noise_head.prop(inst, "noise_enabled", text="Noise")
-                _draw_copy_paste(noise_head, "noise")
-                if inst.noise_enabled:
-                    noise_col.prop(inst, "noise_strength_pos")
-                    noise_col.prop(inst, "noise_strength_rot")
-                    noise_col.prop(inst, "noise_frequency")
-                    noise_col.prop(inst, "noise_seed")
+                # Follow / LookAt / Noise / Shift / DoF は共通描画ヘルパ
+                _draw_camera_settings(
+                    detail, inst, cam_data=cam.data, kind="instance",
+                )
             else:
                 layout.label(text="アクティブ Instance にカメラがありません", icon="ERROR")
 
@@ -364,6 +287,121 @@ class KINEMA_PT_main(bpy.types.Panel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _draw_camera_settings(layout, params, cam_data, kind: str = "instance") -> None:
+    """Instance / Preset 共通の Follow/LookAt/Noise 編集 UI。
+
+    params: KinemaInstanceItem or KinemaCameraPreset
+    cam_data: bpy.types.Camera or None（Shift / DoF は cam_data に直接アクセス）
+    kind: "instance" / "preset"
+       "preset" の場合は lens_mm / Lock/Solo の概念がないので skip
+    """
+    is_preset = (kind == "preset")
+    show_copy = not is_preset  # Preset 側は WindowManager クリップボードを使わない
+
+    # Follow
+    follow_col = layout.column(align=True)
+    follow_head = follow_col.row(align=True)
+    follow_head.label(text="Follow")
+    if refs.safe_object(params.follow_target):
+        if not is_preset:
+            follow_head.operator(
+                "kinema.detach_follow", text="", icon="UNLINKED",
+            )
+    if show_copy:
+        _draw_copy_paste(follow_head, "follow")
+    follow_col.prop(params, "follow_target", text="Target")
+    if refs.safe_object(params.follow_target):
+        follow_col.prop(params, "follow_distance")
+        angle_box = follow_col.box()
+        angle_box.label(text="Rotation (X / Y / Z)", icon="ORIENTATION_GIMBAL")
+        angle_box.prop(params, "follow_rot_x")
+        angle_box.prop(params, "follow_rot_y")
+        angle_box.prop(params, "follow_rot_z")
+        angle_box.label(
+            text="※ Y 軸 (Roll) は LookAt 経由で適用されます",
+            icon="INFO",
+        )
+        preset_row = angle_box.row(align=True)
+        for label, rx, rz in (
+            ("Front", 0.0, 0.0),
+            ("Right", 0.0, 90.0),
+            ("Back", 0.0, 180.0),
+            ("Left", 0.0, -90.0),
+        ):
+            op = preset_row.operator("kinema.set_follow_angle", text=label)
+            op.rot_x = rx
+            op.rot_y = 0.0
+            op.rot_z = rz
+        follow_col.prop(params, "follow_height")
+        follow_col.prop(params, "follow_side")
+        follow_col.prop(params, "follow_damping")
+        follow_col.prop(params, "follow_auto_lookat")
+
+    # LookAt
+    look_col = layout.column(align=True)
+    look_head = look_col.row(align=True)
+    look_head.label(text="LookAt")
+    if show_copy:
+        _draw_copy_paste(look_head, "lookat")
+    look_col.prop(params, "lookat_target", text="Target")
+    if (
+        not refs.safe_object(params.lookat_target)
+        and refs.safe_object(params.follow_target)
+        and params.follow_auto_lookat
+    ):
+        look_col.label(
+            text=f"→ Auto: {params.follow_target.name}",
+            icon="HIDE_OFF",
+        )
+    if refs.safe_object(params.lookat_target) or (
+        refs.safe_object(params.follow_target) and params.follow_auto_lookat
+    ):
+        look_col.prop(params, "lookat_damping")
+
+    # Noise
+    noise_col = layout.column(align=True)
+    noise_head = noise_col.row(align=True)
+    noise_head.prop(params, "noise_enabled", text="Noise")
+    if show_copy:
+        _draw_copy_paste(noise_head, "noise")
+    if params.noise_enabled:
+        noise_col.prop(params, "noise_strength_pos")
+        noise_col.prop(params, "noise_strength_rot")
+        noise_col.prop(params, "noise_frequency")
+        noise_col.prop(params, "noise_seed")
+
+    # Shift / DoF (cam_data があれば)
+    if cam_data is not None:
+        shift_box = layout.box()
+        shift_head = shift_box.row(align=True)
+        shift_head.label(text="Shift", icon="OBJECT_ORIGIN")
+        if show_copy:
+            _draw_copy_paste(shift_head, "pose")
+        shift_row = shift_box.row(align=True)
+        shift_row.prop(cam_data, "shift_x", text="X")
+        shift_row.prop(cam_data, "shift_y", text="Y")
+
+        dof = cam_data.dof
+        dof_box = layout.box()
+        dof_head = dof_box.row(align=True)
+        dof_head.prop(
+            dof, "use_dof",
+            text="Depth of Field", icon="CON_CAMERASOLVER",
+        )
+        if show_copy:
+            _draw_copy_paste(dof_head, "dof")
+        if dof.use_dof:
+            dof_box.prop(dof, "focus_object", text="Focus Object")
+            if dof.focus_object is None:
+                dof_box.prop(dof, "focus_distance", text="Focus Distance")
+            aperture = dof_box.column(align=True)
+            aperture.label(text="Aperture")
+            aperture.prop(dof, "aperture_fstop", text="F-Stop")
+            aperture.prop(dof, "aperture_blades", text="Blades")
+            aperture.prop(dof, "aperture_rotation", text="Rotation")
+            aperture.prop(dof, "aperture_ratio", text="Ratio")
+
 
 def _draw_copy_paste(layout, category: str) -> None:
     """セクションヘッダ用の Copy / Paste アイコン群。
