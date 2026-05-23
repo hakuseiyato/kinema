@@ -4,6 +4,26 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.5] - 2026-05-17
+
+### Added — カメラ別バッチレンダー
+- **`KINEMA_OT_render_by_markers`**: Timeline の Camera Marker ごとに
+  フレーム範囲を切り分け、`<scene.render.filepath>/<cam_name>/` という
+  サブフォルダにそれぞれレンダー
+  - 各 marker の frame から次 marker の frame-1 までを担当範囲とする
+  - 最後の marker は `scene.frame_end` まで
+  - `scene.frame_start` / `scene.frame_end` でクリップ
+  - 同じカメラに複数 marker があれば同じフォルダに（範囲がファイル名に出る）
+  - MP4 (FFmpeg) でも PNG 連番でも動作。Blender の出力フォーマット設定を
+    そのまま使う
+  - 実行前に範囲一覧を invoke_props_dialog で確認できる
+  - 失敗した範囲があっても他は続行
+  - 終了時に `render.filepath` / `frame_start/end` / `scene.camera` を全て復元
+- **`KINEMA_OT_render_active_instance`**: Marker を使わず Active Instance の
+  カメラだけを scene.frame_start〜end でレンダー（同じ `<base>/<cam>/` 規約）
+- UI: 新規 Render ボックスに `By Markers` / `Active Only` ボタン。
+  Marker 件数も表示
+
 ## [2.0.0-beta2.4] - 2026-05-17
 
 ### Added — Round A (健全性 + 小 UX)

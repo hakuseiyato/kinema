@@ -295,6 +295,34 @@ class KINEMA_PT_main(bpy.types.Panel):
             else:
                 layout.label(text="アクティブ Instance にカメラがありません", icon="ERROR")
 
+        # --- Render ---
+        render_box = layout.box()
+        render_box.label(text="Render", icon="RENDER_ANIMATION")
+        render_box.label(
+            text=f"Base: {scene.render.filepath}",
+            icon="FILE_FOLDER",
+        )
+        # Marker 件数表示
+        n_markers = sum(
+            1 for m in scene.timeline_markers if m.camera is not None
+        )
+        if n_markers > 0:
+            render_box.label(
+                text=f"Camera Markers: {n_markers}",
+                icon="MARKER_HLT",
+            )
+        rrow = render_box.row(align=True)
+        rrow.operator(
+            "kinema.render_by_markers",
+            text="By Markers",
+            icon="MARKER",
+        )
+        rrow.operator(
+            "kinema.render_active_instance",
+            text="Active Only",
+            icon="OUTLINER_OB_CAMERA",
+        )
+
         # --- Import / Export ---
         io_box = layout.box()
         io_box.label(text="Import / Export", icon="FILE")
