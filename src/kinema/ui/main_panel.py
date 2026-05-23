@@ -104,7 +104,7 @@ class KINEMA_PT_main(bpy.types.Panel):
         )
         preset_box.operator("kinema.load_preset", icon="IMPORT")
 
-        # --- Active Preset 事前設定（Load 前に編集可能） ---
+        # --- Active Preset 事前設定（折り畳み可能） ---
         if 0 <= st.active_preset_index < len(st.presets):
             sel_preset = st.presets[st.active_preset_index]
             if not sel_preset.is_header:
@@ -113,19 +113,28 @@ class KINEMA_PT_main(bpy.types.Panel):
                     cp = getattr(preset_cam_obj.data, "kinema_preset", None)
                     if cp is not None:
                         cfg_box = preset_box.box()
-                        cfg_box.label(
-                            text=f"Preset config: {sel_preset.name}",
+                        cfg_head = cfg_box.row(align=True)
+                        tri = ("DISCLOSURE_TRI_RIGHT"
+                               if st.preset_config_collapsed
+                               else "DISCLOSURE_TRI_DOWN")
+                        cfg_head.prop(
+                            st, "preset_config_collapsed",
+                            text="", icon=tri, emboss=False,
+                        )
+                        cfg_head.label(
+                            text=f"Preset Config: {sel_preset.name}",
                             icon="PRESET",
                         )
-                        cfg_box.label(
-                            text="Load 時にこの設定が Instance にコピーされます",
-                            icon="INFO",
-                        )
-                        _draw_camera_settings(
-                            cfg_box, cp,
-                            cam_data=preset_cam_obj.data,
-                            kind="preset",
-                        )
+                        if not st.preset_config_collapsed:
+                            cfg_box.label(
+                                text="Load 時にこの設定が Instance にコピーされます",
+                                icon="INFO",
+                            )
+                            _draw_camera_settings(
+                                cfg_box, cp,
+                                cam_data=preset_cam_obj.data,
+                                kind="preset",
+                            )
 
         # 通常モードでも Source 追加系を畳んで配置（Root 準備済の時）
         if root_in_scene and root_has_children:
@@ -167,20 +176,23 @@ class KINEMA_PT_main(bpy.types.Panel):
             cam = refs.safe_object(inst.camera_ref)
             if cam is not None:
                 detail = layout.box()
-                # Lock 中は中身を編集不可（灰色）
-                detail.enabled = not getattr(inst, "locked", False)
                 # Auto Keyframe ON 中は警告色で目立たせる
                 ts_auto_kf = scene.tool_settings.use_keyframe_insert_auto
-                if ts_auto_kf:
-                    detail.alert = True
+                # 折り畳みヘッダ + Lock 状態表示
                 head = detail.row(align=True)
-                head.enabled = True  # ヘッダは常に有効
+                tri = ("DISCLOSURE_TRI_RIGHT"
+                       if st.active_instance_collapsed
+                       else "DISCLOSURE_TRI_DOWN")
+                head.prop(
+                    st, "active_instance_collapsed",
+                    text="", icon=tri, emboss=False,
+                )
                 lock_icon = "LOCKED" if inst.locked else "DOT"
-                label_text = f"Active: {inst.name}"
+                label_text = f"Active Instance: {inst.name}"
                 if ts_auto_kf:
                     label_text = "● REC  " + label_text
                 head.label(text=label_text, icon=lock_icon)
-                # Key 関連ボタン
+                # Key 関連ボタン（折り畳み時もヘッダに常設）
                 key_row = head.row(align=True)
                 key_row.alignment = "RIGHT"
                 ts = scene.tool_settings
@@ -210,15 +222,23 @@ class KINEMA_PT_main(bpy.types.Panel):
                 )
                 paste_all.category = "all"
 
-                # Lens は Instance 独自（lens_mm との同期）
-                lens_row = detail.row(align=True)
-                lens_row.prop(inst, "lens_mm")
-                lens_row.operator("kinema.apply_lens", text="", icon="CHECKMARK")
+                # 折り畳み時はヘッダのみ。展開時のみ中身を描画
+                if not st.active_instance_collapsed:
+                    body = detail.column(align=True)
+                    # Lock 中は body だけ無効化（ヘッダのキーボタンは押せる）
+                    body.enabled = not getattr(inst, "locked", False)
+                    if ts_auto_kf:
+                        body.alert = True
 
-                # Follow / LookAt / Noise / Shift / DoF は共通描画ヘルパ
-                _draw_camera_settings(
-                    detail, inst, cam_data=cam.data, kind="instance",
-                )
+                    # Lens は Instance 独自（lens_mm との同期）
+                    lens_row = body.row(align=True)
+                    lens_row.prop(inst, "lens_mm")
+                    lens_row.operator("kinema.apply_lens", text="", icon="CHECKMARK")
+
+                    # Follow / LookAt / Noise / Shift / DoF は共通描画ヘルパ
+                    _draw_camera_settings(
+                        body, inst, cam_data=cam.data, kind="instance",
+                    )
             else:
                 layout.label(text="アクティブ Instance にカメラがありません", icon="ERROR")
 

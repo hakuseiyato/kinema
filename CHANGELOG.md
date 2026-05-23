@@ -4,6 +4,26 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.10] - 2026-05-17
+
+### Added
+- **Preset Config と Active Instance を折り畳み可能に**
+  - `scene.kinema.preset_config_collapsed` / `active_instance_collapsed`
+    BoolProperty を追加
+  - 各セクションヘッダの ▼/▶ アイコンで開閉
+  - Preset 編集と Instance 編集を同じパネル内に並べつつ、片方を畳めば
+    縦方向の混雑を回避できる
+- **Preset 選択時にも Auto Preview を適用**
+  - `_on_active_preset_changed` で `auto_preview_on_select=True` のとき
+    `scene.camera` も対応カメラに切替（Instance と同じ挙動）
+  - Outliner 選択 + Viewport カメラ切替が両方同期する
+  - Preset と Instance で同じトグルを共有（Instances ヘッダの目アイコン）
+
+### UX
+- Active Instance ヘッダのキーフレーム / コピペボタン群は **折り畳み時も
+  ヘッダに常設**。中身（Lens / Follow / DoF 等）だけが畳まれる
+- Lock 中の灰色化は body 部分にだけ適用、ヘッダボタンは押せる状態を維持
+
 ## [2.0.0-beta2.9] - 2026-05-17
 
 ### Changed — Preset UIList の視認性向上

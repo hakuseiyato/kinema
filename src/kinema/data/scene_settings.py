@@ -73,8 +73,8 @@ def _on_active_instance_changed(self, context):
 def _on_active_preset_changed(self, context):
     """Active Preset 切替時、該当 Camera オブジェクトを Outliner で選択 + active に。
 
-    新仕様では PresetItem.name は Camera オブジェクト名（Camera ベース Preset）。
-    bpy.data.objects.get(name) で解決する。グループヘッダ行は無視。
+    `auto_preview_on_select` が True なら `scene.camera` も切替えてカメラビュー
+    でフォーカスする（Instance 側と同じ挙動）。
     """
     try:
         idx = self.active_preset_index
@@ -85,6 +85,12 @@ def _on_active_preset_changed(self, context):
             cam = bpy.data.objects.get(item.name)
             if cam is not None and cam.type == "CAMERA":
                 _select_only_object(context, cam)
+                # Auto Preview: scene.camera も切替（Instance と共通設定）
+                if getattr(self, "auto_preview_on_select", True):
+                    try:
+                        context.scene.camera = cam
+                    except Exception:
+                        pass
     except Exception:
         pass
 
@@ -121,6 +127,18 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
     # --- 動作 ---
     auto_preview_on_select: BoolProperty(
         name="Auto Preview on Select",
-        description="Cameras タブで Instance を選択するだけで scene.camera を切り替える",
+        description="Cameras タブで Instance / Preset を選択するだけで scene.camera を切り替える",
         default=True,
+    )
+
+    # --- パネル折り畳み状態 ---
+    preset_config_collapsed: BoolProperty(
+        name="Preset Config Collapsed",
+        description="Preset Config セクションを折り畳む",
+        default=False,
+    )
+    active_instance_collapsed: BoolProperty(
+        name="Active Instance Collapsed",
+        description="Active Instance セクションを折り畳む",
+        default=False,
     )
