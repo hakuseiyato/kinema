@@ -4,6 +4,33 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta2.12] - 2026-05-17
+
+### Added
+- **`KINEMA_OT_render_selected_instances`**: enabled が ON の Instance を
+  順に `<base>/<instance_name>/` サブフォルダにバッチレンダー
+  - Mute (`enabled=False`) は skip
+  - Camera が無い Instance はカウントだけ取って skip
+  - 確認ダイアログで対象一覧（最大 10 件）を事前確認
+  - try/finally で render.filepath / scene.camera を必ず復元
+
+### Changed
+- **Render ボックスの UI 刷新**:
+  - `By Markers` ボタンを **削除** し、新規 `Selected` ボタンに置換
+  - `Active Only` は維持
+  - Marker 件数表示を **Enabled Instance 件数** 表示に変更
+    （`HIDE_OFF` アイコンで `N / Total` 形式）
+- **Rotation X / Y / Z を横並び 1 行に**: `_draw_camera_settings` で
+  `row.prop` を 3 つ並べる形に変更。縦スクロールが減って整然と表示
+  - ロール (Y) の注記ラベルも削除（注釈過多を整理）
+- **Cleanup Unchanged Keys の確認ダイアログを削除**:
+  `invoke` / `draw` を取り除き、ボタン直接実行に。Undo で巻き戻せるので
+  事前確認は不要との判断（Yato さん要望）
+
+### Removed
+- `KINEMA_OT_render_by_markers` の UI ボタン（Operator 自体は残存。直接
+  呼び出しは可能）
+
 ## [2.0.0-beta2.11] - 2026-05-17
 
 ### Fixed

@@ -249,20 +249,17 @@ class KINEMA_PT_main(bpy.types.Panel):
             text=f"Base: {scene.render.filepath}",
             icon="FILE_FOLDER",
         )
-        # Marker 件数表示
-        n_markers = sum(
-            1 for m in scene.timeline_markers if m.camera is not None
+        # enabled な Instance 件数を表示
+        n_enabled = sum(1 for i in st.instances if i.enabled)
+        render_box.label(
+            text=f"Enabled Instances: {n_enabled} / {len(st.instances)}",
+            icon="HIDE_OFF",
         )
-        if n_markers > 0:
-            render_box.label(
-                text=f"Camera Markers: {n_markers}",
-                icon="MARKER_HLT",
-            )
         rrow = render_box.row(align=True)
         rrow.operator(
-            "kinema.render_by_markers",
-            text="By Markers",
-            icon="MARKER",
+            "kinema.render_selected_instances",
+            text="Selected",
+            icon="HIDE_OFF",
         )
         rrow.operator(
             "kinema.render_active_instance",
@@ -335,13 +332,11 @@ def _draw_camera_settings(layout, params, cam_data, kind: str = "instance") -> N
         follow_col.prop(params, "follow_distance")
         angle_box = follow_col.box()
         angle_box.label(text="Rotation (X / Y / Z)", icon="ORIENTATION_GIMBAL")
-        angle_box.prop(params, "follow_rot_x")
-        angle_box.prop(params, "follow_rot_y")
-        angle_box.prop(params, "follow_rot_z")
-        angle_box.label(
-            text="※ Y 軸 (Roll) は LookAt 経由で適用されます",
-            icon="INFO",
-        )
+        # 横並び 1 行にまとめる
+        rot_row = angle_box.row(align=True)
+        rot_row.prop(params, "follow_rot_x", text="X")
+        rot_row.prop(params, "follow_rot_y", text="Y")
+        rot_row.prop(params, "follow_rot_z", text="Z")
         preset_row = angle_box.row(align=True)
         for label, rx, rz in (
             ("Front", 0.0, 0.0),

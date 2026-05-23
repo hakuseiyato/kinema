@@ -54,6 +54,7 @@ _CLASSES = (
     io_ops.KINEMA_OT_import_json,
     cineflow_import.KINEMA_OT_import_from_cineflow,
     bake_ops.KINEMA_OT_bake_animation,
+    render_ops.KINEMA_OT_render_selected_instances,
     render_ops.KINEMA_OT_render_by_markers,
     render_ops.KINEMA_OT_render_active_instance,
 )

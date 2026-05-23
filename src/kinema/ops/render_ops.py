@@ -71,6 +71,106 @@ def _normalize_dir(path: str) -> str:
     return path + os.sep
 
 
+class KINEMA_OT_render_selected_instances(KinemaOperator):
+    """`enabled` チェックが入った Instance を全部、カメラ別フォルダにレンダー。
+
+    出力先: `<scene.render.filepath>/<instance_name>/` （各 Instance ごと）。
+    Lock 中 / Mute (`enabled=False`) の Instance は skip。
+    MP4 / 静止画連番のどちらでも動作する。
+    """
+    bl_idname = "kinema.render_selected_instances"
+    bl_label = "Render Selected Instances"
+    bl_description = (
+        "enabled が ON の Instance を順に <base>/<instance_name>/ "
+        "サブフォルダへバッチレンダー"
+    )
+
+    def invoke(self, context, event):  # noqa: ARG002
+        return context.window_manager.invoke_props_dialog(self, width=480)
+
+    def draw(self, context):
+        scene = context.scene
+        st = scene.kinema
+        targets = [i for i in st.instances if i.enabled]
+        layout = self.layout
+        layout.label(text="Render Selected Instances", icon="RENDER_ANIMATION")
+        layout.separator()
+        if not targets:
+            layout.label(text="enabled な Instance がありません", icon="ERROR")
+            layout.label(
+                text="Instance リストの目アイコンで ON にしてください",
+            )
+            return
+        layout.label(text=f"Base: {scene.render.filepath}")
+        layout.label(
+            text=f"Format: {scene.render.image_settings.file_format}",
+        )
+        layout.label(
+            text=f"Frame range: F{scene.frame_start}-{scene.frame_end}",
+        )
+        layout.separator()
+        layout.label(text=f"対象 {len(targets)} Instance:")
+        col = layout.column(align=True)
+        col.scale_y = 0.85
+        from ..utils import refs as _refs  # noqa: PLC0415
+        for inst in targets[:10]:
+            cam = _refs.safe_object(inst.camera_ref)
+            cam_name = cam.name if cam is not None else "(no cam)"
+            col.label(text=f"  {inst.name}/  →  📷 {cam_name}")
+        if len(targets) > 10:
+            col.label(text=f"  ... and {len(targets) - 10} more")
+        layout.separator()
+        layout.label(
+            text="OK で順次レンダー実行。中断は Esc",
+            icon="INFO",
+        )
+
+    def run(self, context):
+        from ..utils import refs as _refs  # noqa: PLC0415
+        scene = context.scene
+        st = scene.kinema
+        targets = [i for i in st.instances if i.enabled]
+        if not targets:
+            self.report({"WARNING"}, "enabled な Instance がありません")
+            return {"CANCELLED"}
+
+        orig_filepath = scene.render.filepath
+        orig_camera = scene.camera
+        base_dir = _normalize_dir(orig_filepath)
+        rendered = 0
+        skipped = 0
+        try:
+            for inst in targets:
+                cam = _refs.safe_object(inst.camera_ref)
+                if not _refs.is_camera_object(cam):
+                    skipped += 1
+                    continue
+                scene.render.filepath = base_dir + inst.name + os.sep
+                scene.camera = cam
+                print(
+                    f"[kinema:render] {inst.name}/{cam.name}  "
+                    f"F{scene.frame_start}-{scene.frame_end}  "
+                    f"→ {scene.render.filepath}"
+                )
+                try:
+                    bpy.ops.render.render(animation=True)
+                    rendered += 1
+                except Exception as exc:
+                    self.report(
+                        {"WARNING"},
+                        f"レンダー失敗 ({inst.name}): {exc}",
+                    )
+        finally:
+            scene.render.filepath = orig_filepath
+            scene.camera = orig_camera
+
+        msg = f"Rendered {rendered}/{len(targets)} instances"
+        if skipped:
+            msg += f" ({skipped} skipped: no camera)"
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
 class KINEMA_OT_render_by_markers(KinemaOperator):
     """Timeline の Camera Marker ごとに別フォルダへバッチレンダーする。
 

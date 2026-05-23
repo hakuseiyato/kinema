@@ -295,20 +295,6 @@ class KINEMA_OT_clear_unchanged_keys(KinemaOperator):
         "削除する（Key All で打ったが動かなかった分の掃除）"
     )
 
-    def invoke(self, context, event):  # noqa: ARG002
-        return context.window_manager.invoke_props_dialog(self, width=380)
-
-    def draw(self, context):  # noqa: ARG002
-        layout = self.layout
-        layout.label(text="Clear Unchanged Keys", icon="KEY_DEHLT")
-        layout.separator()
-        layout.label(
-            text="Active Instance に紐づく f-curve のうち、",
-        )
-        layout.label(text="全 keyframe が同じ値のものを削除します。")
-        layout.label(text="変化しているキーは残ります。")
-        layout.label(text="（Ctrl+Z で取り消せます）", icon="INFO")
-
     def run(self, context):
         scene = context.scene
         st = scene.kinema
