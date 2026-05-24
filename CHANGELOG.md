@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+### Changed
+- **レンダーを非同期キュー方式に全面書き直し**: 旧実装は同期
+  `bpy.ops.render.render(animation=True)` を for ループで呼んでいたため
+  Blender がブロックされて「固まる」「Esc が効かない」状態になっていた
+  - `bpy.ops.render.render("INVOKE_DEFAULT", animation=True)` で
+    モーダルウィンドウを開いてレンダー → `render_complete` handler で
+    timer 経由で次のキューを起動する設計に変更
+  - `render_cancel` handler でユーザーキャンセル時にキューを破棄 +
+    元の `scene.render.filepath` / `scene.camera` を復元
+  - 確認ダイアログ (`invoke_props_dialog`) で **出力 Base / Format /
+    Extension / Frame range / 対象 Instance ごとの出力サンプルパス** を
+    事前表示。拡張子は Blender の `scene.render.file_extension` から取得
+    し、動画 (FFMPEG / AVI) と静止画でファイル名表記を出し分け
+  - 新規 `KINEMA_OT_cancel_render_queue` Operator + Render パネルに
+    キュー実行中インジケータと Cancel ボタンを追加
+- `render_ops.KINEMA_OT_render_by_markers` を **削除**（ops 登録からも除去）。
+  beta2.12 で UI ボタンは外していたが、Operator 自体も新キュー方式と整合
+  しないため削除
+
 ## [2.0.0-beta2.12] - 2026-05-17
 
 ### Added

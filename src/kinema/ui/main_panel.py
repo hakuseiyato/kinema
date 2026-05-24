@@ -255,7 +255,22 @@ class KINEMA_PT_main(bpy.types.Panel):
             text=f"Enabled Instances: {n_enabled} / {len(st.instances)}",
             icon="HIDE_OFF",
         )
+        # キュー実行中のインジケータ + Cancel
+        from ..ops import render_ops as _render_ops
+        if _render_ops.is_queue_active():
+            qbox = render_box.box()
+            qbox.alert = True
+            qbox.label(
+                text=f"キュー実行中: 残り {_render_ops.queue_size()} 件",
+                icon="REC",
+            )
+            qbox.operator(
+                "kinema.cancel_render_queue",
+                text="Cancel Queue",
+                icon="CANCEL",
+            )
         rrow = render_box.row(align=True)
+        rrow.enabled = not _render_ops.is_queue_active()
         rrow.operator(
             "kinema.render_selected_instances",
             text="Selected",

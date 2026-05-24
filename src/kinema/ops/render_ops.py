@@ -1,69 +1,47 @@
-"""Camera Marker ベースのバッチレンダー Operator。
+"""バッチレンダー Operator。
 
-Timeline 上の `scene.timeline_markers` のうち `marker.camera` が set されている
-ものを「カメラ切替ポイント」として読み、各カメラのフレーム範囲ごとに別ファイル
-（サブフォルダ `<base>/<cam_name>/`）として出力する。
+非同期キュー方式: `bpy.ops.render.render('INVOKE_DEFAULT', animation=True)` で
+モーダルウィンドウを開いてレンダーし、`render_complete` handler で次のキューを
+進める。これにより Blender がブロックされず、Esc キャンセルも効く。
 
-仕組み:
-  1. timeline_markers から (frame, camera) を抽出して frame 昇順で並べる
-  2. 各 marker の frame 〜 次 marker の (frame - 1) を「そのカメラの担当範囲」と
-     見做す。最後の marker は scene.frame_end まで
-  3. scene.frame_start 未満 / scene.frame_end 超過の範囲はクリップ
-  4. 各範囲について:
-       - scene.render.filepath を `<base>/<cam_name>/` に書き換え
-       - scene.frame_start / frame_end を範囲に
-       - scene.camera を切替
-       - bpy.ops.render.render(animation=True) を呼ぶ
-     終わったら元の設定を全て復元
+設計:
+  1. Operator は「キューを積んで最初の 1 件を起動するだけ」で即 FINISHED を返す
+  2. 各 render が完了すると `_on_render_complete` が呼ばれ、次のキューを timer
+     で再起動（同期スタックを一度抜けてから）
+  3. キューが空になったら `render.filepath` / `scene.camera` を復元 + handler を解除
+  4. ユーザーが Esc キャンセルしたら `render_cancel` handler でキュー破棄 + 復元
 
-MP4 (FFmpeg) と PNG 連番のどちらでも動く。Blender が出力フォーマットに
-従ってファイル名を付ける（連番 / 範囲付きファイル名）。
+出力ファイル名は Blender の `scene.render.file_extension` に従う:
+  - PNG / JPEG / EXR 等の静止画: `<base>/<inst_name>/####.<ext>` (連番)
+  - FFMPEG / AVI 等の動画: `<base>/<inst_name>/####-####.<ext>` (範囲付き)
 """
 
 from __future__ import annotations
 
 import os
+from typing import Optional
 
 import bpy
+from bpy.app.handlers import persistent
 
+from ..utils import refs
 from ._base import KinemaOperator
 
 
-def _extract_camera_ranges(scene):
-    """timeline_markers からカメラ担当範囲を抽出する。
+# ---------------------------------------------------------------------------
+# キュー状態（モジュールレベル）
+# ---------------------------------------------------------------------------
 
-    返値: [(camera_obj, frame_start, frame_end, marker_name), ...]
-    範囲は [frame_start, frame_end] の閉区間。
-    """
-    markers = sorted(
-        [m for m in scene.timeline_markers if m.camera is not None],
-        key=lambda m: m.frame,
-    )
-    if not markers:
-        return []
-    s_min = scene.frame_start
-    s_max = scene.frame_end
-
-    ranges = []
-    for i, m in enumerate(markers):
-        cam = m.camera
-        fs = m.frame
-        fe = markers[i + 1].frame - 1 if (i + 1) < len(markers) else s_max
-        # クリップ
-        fs = max(fs, s_min)
-        fe = min(fe, s_max)
-        if fe < fs:
-            continue
-        ranges.append((cam, fs, fe, m.name))
-    return ranges
+# キュー要素: (subfolder_path, camera_obj, label)
+_render_queue: list = []
+# 元の設定を保存（キュー終了時に復元）
+_render_saved: dict = {}
+# 現在キュー実行中フラグ
+_render_active: bool = False
 
 
 def _normalize_dir(path: str) -> str:
-    """末尾に / を付与してディレクトリ扱いにする。
-
-    Blender の render.filepath は末尾が `/` or `\\` だと「ディレクトリ + 連番」、
-    そうでないと「ファイル名のベース」として解釈される。
-    """
+    """末尾を OS 区切りでディレクトリ形式にする。"""
     if not path:
         return path
     if path.endswith(("/", "\\", os.sep)):
@@ -71,22 +49,145 @@ def _normalize_dir(path: str) -> str:
     return path + os.sep
 
 
-class KINEMA_OT_render_selected_instances(KinemaOperator):
-    """`enabled` チェックが入った Instance を全部、カメラ別フォルダにレンダー。
+def _is_movie_format(file_format: str) -> bool:
+    """動画形式かどうか（1 ファイルにまとまる）。"""
+    return file_format in {"FFMPEG", "AVI_JPEG", "AVI_RAW"}
 
-    出力先: `<scene.render.filepath>/<instance_name>/` （各 Instance ごと）。
-    Lock 中 / Mute (`enabled=False`) の Instance は skip。
-    MP4 / 静止画連番のどちらでも動作する。
+
+def _sample_output_path(scene, base_dir: str, inst_name: str) -> str:
+    """Instance ごとの出力サンプルパスを文字列で生成（UI 表示用）。"""
+    ext = scene.render.file_extension or ""
+    fmt = scene.render.image_settings.file_format
+    fs = scene.frame_start
+    fe = scene.frame_end
+    sub = base_dir + inst_name + os.sep
+    if _is_movie_format(fmt):
+        return f"{sub}{fs:04d}-{fe:04d}{ext}"
+    return f"{sub}{fs:04d}{ext}  ...  {fe:04d}{ext}"
+
+
+# ---------------------------------------------------------------------------
+# Handler
+# ---------------------------------------------------------------------------
+
+@persistent
+def _on_render_complete(scene):
+    """1 件の render 終了 → 次のキューを timer で起動。"""
+    if not _render_active:
+        return  # kinema 由来でないレンダー完了は無視
+    if not _render_queue:
+        # 全部完了 → 復元 & handler 解除
+        _finalize(scene, reason="complete")
+        return
+    bpy.app.timers.register(_start_next_render, first_interval=0.2)
+
+
+@persistent
+def _on_render_cancel(scene):
+    """ユーザーが Esc 等でキャンセルしたら キュー全破棄 + 復元。"""
+    if not _render_active:
+        return
+    _render_queue.clear()
+    _finalize(scene, reason="cancel")
+
+
+def _finalize(scene, reason: str) -> None:
+    """キュー終了処理。"""
+    global _render_active
+    try:
+        if "filepath" in _render_saved:
+            scene.render.filepath = _render_saved["filepath"]
+        if "camera" in _render_saved:
+            scene.camera = _render_saved["camera"]
+    except Exception:
+        pass
+    _render_saved.clear()
+    _render_active = False
+    # handler を外す
+    for hook_list, fn in (
+        (bpy.app.handlers.render_complete, _on_render_complete),
+        (bpy.app.handlers.render_cancel, _on_render_cancel),
+    ):
+        try:
+            if fn in hook_list:
+                hook_list.remove(fn)
+        except Exception:
+            pass
+    print(f"[kinema:render] queue finalized ({reason})")
+
+
+def _start_next_render():
+    """timer から呼ばれて、INVOKE_DEFAULT で render を開始。"""
+    if not _render_queue:
+        return None
+    sub_dir, camera, label = _render_queue.pop(0)
+    scene = bpy.context.scene
+    try:
+        scene.render.filepath = sub_dir
+        scene.camera = camera
+        print(f"[kinema:render] starting: {label}  →  {sub_dir}")
+        bpy.ops.render.render("INVOKE_DEFAULT", animation=True)
+    except Exception as exc:
+        print(f"[kinema:render] error starting render: {exc}")
+        # エラーで次が動かないと困るので強制完了扱い
+        _finalize(scene, reason=f"error: {exc}")
+    return None  # timer は一度きり
+
+
+def _register_handlers():
+    """重複なく handler を登録。"""
+    for hook_list, fn in (
+        (bpy.app.handlers.render_complete, _on_render_complete),
+        (bpy.app.handlers.render_cancel, _on_render_cancel),
+    ):
+        if fn not in hook_list:
+            hook_list.append(fn)
+
+
+def _kickoff_queue(scene, queue_items: list[tuple[str, bpy.types.Object, str]]) -> bool:
+    """キューを積んで最初の render を起動。
+
+    queue_items: [(sub_dir, camera, label), ...]
+    戻り値: 起動できたら True。
+    """
+    global _render_active
+    if _render_active:
+        return False
+    if not queue_items:
+        return False
+
+    _render_saved.clear()
+    _render_saved["filepath"] = scene.render.filepath
+    _render_saved["camera"] = scene.camera
+
+    _render_queue.clear()
+    _render_queue.extend(queue_items)
+    _register_handlers()
+    _render_active = True
+
+    # 最初のレンダーを起動
+    bpy.app.timers.register(_start_next_render, first_interval=0.1)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Operators
+# ---------------------------------------------------------------------------
+
+class KINEMA_OT_render_selected_instances(KinemaOperator):
+    """`enabled` チェックが入った Instance をキューに積んでバッチレンダー。
+
+    非同期キュー方式: Blender はブロックされず、Esc でキャンセル可能。
     """
     bl_idname = "kinema.render_selected_instances"
     bl_label = "Render Selected Instances"
     bl_description = (
         "enabled が ON の Instance を順に <base>/<instance_name>/ "
-        "サブフォルダへバッチレンダー"
+        "サブフォルダへ非同期キューでバッチレンダー"
     )
 
     def invoke(self, context, event):  # noqa: ARG002
-        return context.window_manager.invoke_props_dialog(self, width=480)
+        return context.window_manager.invoke_props_dialog(self, width=560)
 
     def draw(self, context):
         scene = context.scene
@@ -95,93 +196,101 @@ class KINEMA_OT_render_selected_instances(KinemaOperator):
         layout = self.layout
         layout.label(text="Render Selected Instances", icon="RENDER_ANIMATION")
         layout.separator()
-        if not targets:
-            layout.label(text="enabled な Instance がありません", icon="ERROR")
+        if _render_active:
             layout.label(
-                text="Instance リストの目アイコンで ON にしてください",
+                text="既にレンダリングキューが実行中です",
+                icon="ERROR",
+            )
+            layout.label(
+                text="Esc でキャンセル後に再実行してください",
             )
             return
-        layout.label(text=f"Base: {scene.render.filepath}")
-        layout.label(
-            text=f"Format: {scene.render.image_settings.file_format}",
+        if not targets:
+            layout.label(text="enabled な Instance がありません", icon="ERROR")
+            layout.label(text="Instance リストの目アイコンで ON にしてください")
+            return
+
+        ext = scene.render.file_extension or "(none)"
+        fmt = scene.render.image_settings.file_format
+        base_dir = _normalize_dir(bpy.path.abspath(scene.render.filepath))
+
+        # メタ情報
+        box = layout.box()
+        box.label(text="出力設定", icon="OUTPUT")
+        box.label(text=f"Base: {scene.render.filepath}")
+        box.label(text=f"Format: {fmt}   Extension: {ext}")
+        box.label(
+            text=f"Frame range: F{scene.frame_start} – {scene.frame_end} "
+                 f"({scene.frame_end - scene.frame_start + 1} frames)",
         )
-        layout.label(
-            text=f"Frame range: F{scene.frame_start}-{scene.frame_end}",
-        )
+
+        # 対象一覧
         layout.separator()
         layout.label(text=f"対象 {len(targets)} Instance:")
         col = layout.column(align=True)
         col.scale_y = 0.85
-        from ..utils import refs as _refs  # noqa: PLC0415
         for inst in targets[:10]:
-            cam = _refs.safe_object(inst.camera_ref)
+            cam = refs.safe_object(inst.camera_ref)
             cam_name = cam.name if cam is not None else "(no cam)"
-            col.label(text=f"  {inst.name}/  →  📷 {cam_name}")
+            sample = _sample_output_path(scene, base_dir, inst.name)
+            col.label(text=f"  📷 {cam_name}  →  {sample}")
         if len(targets) > 10:
             col.label(text=f"  ... and {len(targets) - 10} more")
         layout.separator()
         layout.label(
-            text="OK で順次レンダー実行。中断は Esc",
+            text="OK で非同期キューを起動。Esc で中断可能",
             icon="INFO",
         )
 
     def run(self, context):
-        from ..utils import refs as _refs  # noqa: PLC0415
         scene = context.scene
         st = scene.kinema
+
+        if _render_active:
+            self.report({"WARNING"}, "既にレンダリングキューが実行中です")
+            return {"CANCELLED"}
+
         targets = [i for i in st.instances if i.enabled]
         if not targets:
             self.report({"WARNING"}, "enabled な Instance がありません")
             return {"CANCELLED"}
 
-        orig_filepath = scene.render.filepath
-        orig_camera = scene.camera
-        base_dir = _normalize_dir(orig_filepath)
-        rendered = 0
+        base_dir = _normalize_dir(scene.render.filepath)
+        items: list = []
         skipped = 0
-        try:
-            for inst in targets:
-                cam = _refs.safe_object(inst.camera_ref)
-                if not _refs.is_camera_object(cam):
-                    skipped += 1
-                    continue
-                scene.render.filepath = base_dir + inst.name + os.sep
-                scene.camera = cam
-                print(
-                    f"[kinema:render] {inst.name}/{cam.name}  "
-                    f"F{scene.frame_start}-{scene.frame_end}  "
-                    f"→ {scene.render.filepath}"
-                )
-                try:
-                    bpy.ops.render.render(animation=True)
-                    rendered += 1
-                except Exception as exc:
-                    self.report(
-                        {"WARNING"},
-                        f"レンダー失敗 ({inst.name}): {exc}",
-                    )
-        finally:
-            scene.render.filepath = orig_filepath
-            scene.camera = orig_camera
+        for inst in targets:
+            cam = refs.safe_object(inst.camera_ref)
+            if not refs.is_camera_object(cam):
+                skipped += 1
+                continue
+            sub = base_dir + inst.name + os.sep
+            items.append((sub, cam, inst.name))
 
-        msg = f"Rendered {rendered}/{len(targets)} instances"
-        if skipped:
-            msg += f" ({skipped} skipped: no camera)"
-        self.report({"INFO"}, msg)
-        return {"FINISHED"}
+        if not items:
+            self.report({"WARNING"}, "有効なカメラを持つ Instance がありません")
+            return {"CANCELLED"}
+
+        if _kickoff_queue(scene, items):
+            self.report(
+                {"INFO"},
+                f"Queued {len(items)} instances "
+                + (f"({skipped} skipped: no camera)" if skipped else ""),
+            )
+            return {"FINISHED"}
+        self.report({"ERROR"}, "キューの起動に失敗")
+        return {"CANCELLED"}
 
 
-class KINEMA_OT_render_by_markers(KinemaOperator):
-    """Timeline の Camera Marker ごとに別フォルダへバッチレンダーする。
+class KINEMA_OT_render_active_instance(KinemaOperator):
+    """Active Instance だけをキューに積んでレンダー（単発）。
 
-    出力先: `<scene.render.filepath>/<cam_name>/` (各 marker のフレーム範囲)。
-    MP4 / 静止画連番のどちらでも動作する。
+    非同期キュー方式なので Blender はブロックされない。
     """
-    bl_idname = "kinema.render_by_markers"
-    bl_label = "Render by Camera Markers"
+    bl_idname = "kinema.render_active_instance"
+    bl_label = "Render Active Instance"
     bl_description = (
-        "Timeline の Camera Marker でカメラ別に範囲を分け、"
-        "<base>/<cam_name>/ サブフォルダへバッチレンダー"
+        "Active Instance のカメラを <base>/<inst_name>/ にレンダー "
+        "(非同期、Esc で中断可)"
     )
 
     def invoke(self, context, event):  # noqa: ARG002
@@ -189,160 +298,93 @@ class KINEMA_OT_render_by_markers(KinemaOperator):
 
     def draw(self, context):
         scene = context.scene
-        layout = self.layout
-        layout.label(text="Render by Camera Markers", icon="RENDER_ANIMATION")
-        layout.separator()
-        ranges = _extract_camera_ranges(scene)
-        if not ranges:
-            layout.label(
-                text="Camera Marker が見つかりません。",
-                icon="ERROR",
-            )
-            layout.label(
-                text="Timeline で M キーで marker を打ち、",
-            )
-            layout.label(
-                text="Ctrl+B でアクティブカメラを Bind してください",
-            )
-            return
-
-        base = _normalize_dir(bpy.path.abspath(scene.render.filepath))
-        layout.label(text=f"Base: {scene.render.filepath}")
-        layout.label(
-            text=f"Format: {scene.render.image_settings.file_format}",
-        )
-        layout.separator()
-        layout.label(text=f"対象 {len(ranges)} レンジ:")
-        col = layout.column(align=True)
-        col.scale_y = 0.85
-        for cam, fs, fe, mname in ranges[:10]:
-            col.label(
-                text=f"  F{fs:04d}-{fe:04d}  →  {cam.name}/  (marker '{mname}')",
-            )
-        if len(ranges) > 10:
-            col.label(text=f"  ... and {len(ranges) - 10} more ranges")
-        layout.separator()
-        layout.label(
-            text="OK で順次レンダー実行。中断は Esc",
-            icon="INFO",
-        )
-
-    def run(self, context):
-        scene = context.scene
-        ranges = _extract_camera_ranges(scene)
-        if not ranges:
-            self.report({"WARNING"}, "Camera Marker がありません")
-            return {"CANCELLED"}
-
-        # 元設定を保存
-        orig_filepath = scene.render.filepath
-        orig_fstart = scene.frame_start
-        orig_fend = scene.frame_end
-        orig_camera = scene.camera
-
-        base_dir = _normalize_dir(orig_filepath)
-        rendered = 0
-        try:
-            for cam, fs, fe, mname in ranges:
-                # 出力パスをカメラ別サブフォルダに切替
-                out_dir = base_dir + cam.name + os.sep
-                scene.render.filepath = out_dir
-                scene.frame_start = fs
-                scene.frame_end = fe
-                scene.camera = cam
-
-                print(
-                    f"[kinema:render] {cam.name}  F{fs}-{fe}  → {out_dir}"
-                )
-                try:
-                    bpy.ops.render.render(animation=True)
-                    rendered += 1
-                except Exception as exc:
-                    self.report(
-                        {"WARNING"},
-                        f"レンダー失敗 ({cam.name} F{fs}-{fe}): {exc}",
-                    )
-                    # 失敗しても他の範囲は続行
-        finally:
-            # 元設定を必ず復元
-            scene.render.filepath = orig_filepath
-            scene.frame_start = orig_fstart
-            scene.frame_end = orig_fend
-            scene.camera = orig_camera
-
-        self.report(
-            {"INFO"},
-            f"Rendered {rendered}/{len(ranges)} ranges from camera markers",
-        )
-        return {"FINISHED"}
-
-
-class KINEMA_OT_render_active_instance(KinemaOperator):
-    """Active Instance のカメラ単体でレンダー（サブフォルダ分け）。
-
-    Marker を使わず、現在 Active な Instance のカメラだけを scene.frame_start〜
-    frame_end で `<base>/<cam_name>/` にレンダー出力する。
-    """
-    bl_idname = "kinema.render_active_instance"
-    bl_label = "Render Active Instance"
-    bl_description = (
-        "Active Instance のカメラを scene.frame_start〜end で"
-        " <base>/<cam_name>/ にレンダー"
-    )
-
-    def invoke(self, context, event):  # noqa: ARG002
-        return context.window_manager.invoke_props_dialog(self, width=420)
-
-    def draw(self, context):
-        scene = context.scene
         st = scene.kinema
         layout = self.layout
         layout.label(text="Render Active Instance", icon="RENDER_ANIMATION")
         layout.separator()
+        if _render_active:
+            layout.label(
+                text="既にレンダリングキューが実行中です",
+                icon="ERROR",
+            )
+            return
         idx = st.active_instance_index
         if not (0 <= idx < len(st.instances)):
             layout.label(text="Instance が選択されていません", icon="ERROR")
             return
-        cam = st.instances[idx].camera_ref
-        cam_name = cam.name if cam is not None else "(none)"
-        layout.label(text=f"対象: {cam_name}")
-        layout.label(text=f"範囲: F{scene.frame_start}-{scene.frame_end}")
-        layout.label(
-            text=f"出力: {scene.render.filepath}/{cam_name}/",
+        inst = st.instances[idx]
+        cam = refs.safe_object(inst.camera_ref)
+        if not refs.is_camera_object(cam):
+            layout.label(text="Camera がありません", icon="ERROR")
+            return
+
+        ext = scene.render.file_extension or "(none)"
+        fmt = scene.render.image_settings.file_format
+        base_dir = _normalize_dir(bpy.path.abspath(scene.render.filepath))
+        sample = _sample_output_path(scene, base_dir, inst.name)
+
+        box = layout.box()
+        box.label(text="出力設定", icon="OUTPUT")
+        box.label(text=f"Format: {fmt}   Extension: {ext}")
+        box.label(
+            text=f"Frame range: F{scene.frame_start} – {scene.frame_end}",
         )
-        layout.label(
-            text=f"Format: {scene.render.image_settings.file_format}",
-        )
+        box.label(text=f"対象: 📷 {cam.name}")
+        box.label(text=f"出力: {sample}")
 
     def run(self, context):
-        from ..utils import refs  # noqa: PLC0415
         scene = context.scene
         st = scene.kinema
+
+        if _render_active:
+            self.report({"WARNING"}, "既にレンダリングキューが実行中です")
+            return {"CANCELLED"}
+
         idx = st.active_instance_index
         if not (0 <= idx < len(st.instances)):
             self.report({"WARNING"}, "Instance が選択されていません")
             return {"CANCELLED"}
-        cam = refs.safe_object(st.instances[idx].camera_ref)
+        inst = st.instances[idx]
+        cam = refs.safe_object(inst.camera_ref)
         if not refs.is_camera_object(cam):
             self.report({"ERROR"}, "Active Instance にカメラがありません")
             return {"CANCELLED"}
 
-        orig_filepath = scene.render.filepath
-        orig_camera = scene.camera
-        base_dir = _normalize_dir(orig_filepath)
-        try:
-            scene.render.filepath = base_dir + cam.name + os.sep
-            scene.camera = cam
-            print(
-                f"[kinema:render] {cam.name}  F{scene.frame_start}-{scene.frame_end}"
-                f"  → {scene.render.filepath}"
-            )
-            bpy.ops.render.render(animation=True)
-        except Exception as exc:
-            self.report({"ERROR"}, f"レンダー失敗: {exc}")
+        base_dir = _normalize_dir(scene.render.filepath)
+        items = [(base_dir + inst.name + os.sep, cam, inst.name)]
+
+        if _kickoff_queue(scene, items):
+            self.report({"INFO"}, f"Queued {inst.name}")
+            return {"FINISHED"}
+        self.report({"ERROR"}, "キューの起動に失敗")
+        return {"CANCELLED"}
+
+
+class KINEMA_OT_cancel_render_queue(KinemaOperator):
+    """進行中の kinema レンダーキューを破棄する（次の Instance に進まない）。
+
+    現在レンダリング中の Frame は完了させてから止めるかは Blender 側の挙動次第。
+    """
+    bl_idname = "kinema.cancel_render_queue"
+    bl_label = "Cancel Render Queue"
+    bl_description = "kinema レンダーキューを中断（現フレームは完了次第停止）"
+
+    def run(self, context):
+        if not _render_active:
+            self.report({"INFO"}, "キューは実行されていません")
             return {"CANCELLED"}
-        finally:
-            scene.render.filepath = orig_filepath
-            scene.camera = orig_camera
-        self.report({"INFO"}, f"Rendered {cam.name}")
+        _render_queue.clear()
+        self.report({"INFO"}, "キューを空にしました。現フレームの完了で停止します")
         return {"FINISHED"}
+
+
+# ---------------------------------------------------------------------------
+# 公開ヘルパ（UI から状態を見るため）
+# ---------------------------------------------------------------------------
+
+def is_queue_active() -> bool:
+    return _render_active
+
+
+def queue_size() -> int:
+    return len(_render_queue)
