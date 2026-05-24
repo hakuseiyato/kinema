@@ -54,6 +54,20 @@ def _is_movie_format(file_format: str) -> bool:
     return file_format in {"FFMPEG", "AVI_JPEG", "AVI_RAW"}
 
 
+_FFMPEG_CONTAINER_EXT = {
+    "MPEG1": ".mpg",
+    "MPEG2": ".dvd",
+    "MPEG4": ".mp4",
+    "AVI": ".avi",
+    "QUICKTIME": ".mov",
+    "DV": ".dv",
+    "OGG": ".ogv",
+    "MKV": ".mkv",
+    "FLASH": ".flv",
+    "WEBM": ".webm",
+}
+
+
 def _resolve_format_label(scene) -> tuple[str, bool]:
     """(表示用 format ラベル, 動画フラグ) を返す。
 
@@ -73,9 +87,30 @@ def _resolve_format_label(scene) -> tuple[str, bool]:
     return fmt, _is_movie_format(fmt)
 
 
+def _resolve_extension(scene) -> str:
+    """実際に出力されるファイル拡張子を返す（Blender 標準より正確）。
+
+    Blender 5.x の `scene.render.file_extension` は `image_settings.file_format`
+    だけを見るため、`media_type=MOVIE` のときに `.png` を返すことがある。
+    ここでは `media_type=MOVIE` の場合は ffmpeg コンテナから拡張子を解決する。
+    """
+    ims = scene.render.image_settings
+    media_type = getattr(ims, "media_type", None)
+    if media_type == "MOVIE":
+        try:
+            container = scene.render.ffmpeg.format
+            ext = _FFMPEG_CONTAINER_EXT.get(container)
+            if ext:
+                return ext
+        except Exception:
+            pass
+    # それ以外は Blender 標準に委ねる
+    return scene.render.file_extension or ""
+
+
 def _sample_output_path(scene, base_dir: str, inst_name: str) -> str:
     """Instance ごとの出力サンプルパスを文字列で生成（UI 表示用）。"""
-    ext = scene.render.file_extension or ""
+    ext = _resolve_extension(scene)
     _label, is_movie = _resolve_format_label(scene)
     fs = scene.frame_start
     fe = scene.frame_end
@@ -229,7 +264,7 @@ class KINEMA_OT_render_selected_instances(KinemaOperator):
             layout.label(text="Instance リストの目アイコンで ON にしてください")
             return
 
-        ext = scene.render.file_extension or "(none)"
+        ext = _resolve_extension(scene) or "(none)"
         fmt, _is_movie = _resolve_format_label(scene)
         base_dir = _normalize_dir(bpy.path.abspath(scene.render.filepath))
 
@@ -337,7 +372,7 @@ class KINEMA_OT_render_active_instance(KinemaOperator):
             layout.label(text="Camera がありません", icon="ERROR")
             return
 
-        ext = scene.render.file_extension or "(none)"
+        ext = _resolve_extension(scene) or "(none)"
         fmt, _is_movie = _resolve_format_label(scene)
         base_dir = _normalize_dir(bpy.path.abspath(scene.render.filepath))
         sample = _sample_output_path(scene, base_dir, inst.name)

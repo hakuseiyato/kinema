@@ -256,7 +256,8 @@ class KINEMA_PT_main(bpy.types.Panel):
         )
         hdr.label(text="出力設定", icon="OUTPUT")
         # 現在の解決後の拡張子も右側に表示（FFMPEG コンテナ変更が即反映される）
-        cur_ext = scene.render.file_extension or "(none)"
+        from ..ops.render_ops import _resolve_extension
+        cur_ext = _resolve_extension(scene) or "(none)"
         hdr.label(text=f"ext: {cur_ext}")
 
         if not out_collapsed:
