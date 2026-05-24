@@ -90,22 +90,38 @@ def _resolve_format_label(scene) -> tuple[str, bool]:
 def _resolve_extension(scene) -> str:
     """実際に出力されるファイル拡張子を返す（Blender 標準より正確）。
 
-    Blender 5.x の `scene.render.file_extension` は `image_settings.file_format`
-    だけを見るため、`media_type=MOVIE` のときに `.png` を返すことがある。
-    ここでは `media_type=MOVIE` の場合は ffmpeg コンテナから拡張子を解決する。
+    `scene.render.frame_path(frame=N)` は Blender が実際にそのフレームで
+    書き込むフルパス（拡張子込み）を返してくれる最も信頼できる API。
+    `image_settings.file_format` / `media_type` / `ffmpeg.format` の組合せに
+    関係なく、Blender 自身が決めた実拡張子をそのまま使える。
+
+    フォールバック: API が失敗した場合のみ `scene.render.file_extension` と
+    ffmpeg コンテナマップから推定する。
     """
-    ims = scene.render.image_settings
+    r = scene.render
+    # 一次: frame_path() から拡張子を取る（Blender 自身の解決を信頼）
+    try:
+        sample_path = r.frame_path(frame=scene.frame_start)
+        ext = os.path.splitext(sample_path)[1]
+        if ext:
+            return ext
+    except Exception:
+        pass
+
+    # フォールバック: media_type=MOVIE なら ffmpeg.format から推定
+    ims = r.image_settings
     media_type = getattr(ims, "media_type", None)
     if media_type == "MOVIE":
         try:
-            container = scene.render.ffmpeg.format
+            container = r.ffmpeg.format
             ext = _FFMPEG_CONTAINER_EXT.get(container)
             if ext:
                 return ext
         except Exception:
             pass
-    # それ以外は Blender 標準に委ねる
-    return scene.render.file_extension or ""
+
+    # 最終フォールバック: Blender 標準
+    return r.file_extension or ""
 
 
 def _sample_output_path(scene, base_dir: str, inst_name: str) -> str:
