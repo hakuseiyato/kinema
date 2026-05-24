@@ -54,14 +54,33 @@ def _is_movie_format(file_format: str) -> bool:
     return file_format in {"FFMPEG", "AVI_JPEG", "AVI_RAW"}
 
 
+def _resolve_format_label(scene) -> tuple[str, bool]:
+    """(表示用 format ラベル, 動画フラグ) を返す。
+
+    Blender 4.5+ で `image_settings.media_type` が追加され、MOVIE のときは
+    file_format が PNG 等のままでも実際は FFMPEG で出力される。
+    """
+    ims = scene.render.image_settings
+    fmt = ims.file_format
+    media_type = getattr(ims, "media_type", None)
+    if media_type == "MOVIE":
+        # ffmpeg 設定から container を読む
+        try:
+            container = scene.render.ffmpeg.format
+            return f"FFMPEG ({container})", True
+        except Exception:
+            return "FFMPEG", True
+    return fmt, _is_movie_format(fmt)
+
+
 def _sample_output_path(scene, base_dir: str, inst_name: str) -> str:
     """Instance ごとの出力サンプルパスを文字列で生成（UI 表示用）。"""
     ext = scene.render.file_extension or ""
-    fmt = scene.render.image_settings.file_format
+    _label, is_movie = _resolve_format_label(scene)
     fs = scene.frame_start
     fe = scene.frame_end
     sub = base_dir + inst_name + os.sep
-    if _is_movie_format(fmt):
+    if is_movie:
         return f"{sub}{fs:04d}-{fe:04d}{ext}"
     return f"{sub}{fs:04d}{ext}  ...  {fe:04d}{ext}"
 
@@ -211,7 +230,7 @@ class KINEMA_OT_render_selected_instances(KinemaOperator):
             return
 
         ext = scene.render.file_extension or "(none)"
-        fmt = scene.render.image_settings.file_format
+        fmt, _is_movie = _resolve_format_label(scene)
         base_dir = _normalize_dir(bpy.path.abspath(scene.render.filepath))
 
         # メタ情報
@@ -319,7 +338,7 @@ class KINEMA_OT_render_active_instance(KinemaOperator):
             return
 
         ext = scene.render.file_extension or "(none)"
-        fmt = scene.render.image_settings.file_format
+        fmt, _is_movie = _resolve_format_label(scene)
         base_dir = _normalize_dir(bpy.path.abspath(scene.render.filepath))
         sample = _sample_output_path(scene, base_dir, inst.name)
 

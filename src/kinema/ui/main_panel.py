@@ -245,10 +245,71 @@ class KINEMA_PT_main(bpy.types.Panel):
         # --- Render ---
         render_box = layout.box()
         render_box.label(text="Render", icon="RENDER_ANIMATION")
-        render_box.label(
-            text=f"Base: {scene.render.filepath}",
-            icon="FILE_FOLDER",
+
+        # 出力設定（Blender 標準プロパティを kinema 上で編集可能に）
+        out_collapsed = st.render_output_collapsed
+        hdr = render_box.row(align=True)
+        hdr.prop(
+            st, "render_output_collapsed",
+            text="", emboss=False,
+            icon="TRIA_RIGHT" if out_collapsed else "TRIA_DOWN",
         )
+        hdr.label(text="出力設定", icon="OUTPUT")
+        # 現在の解決後の拡張子も右側に表示（FFMPEG コンテナ変更が即反映される）
+        cur_ext = scene.render.file_extension or "(none)"
+        hdr.label(text=f"ext: {cur_ext}")
+
+        if not out_collapsed:
+            r = scene.render
+            ims = r.image_settings
+            obox = render_box.box()
+            obox.use_property_split = True
+            obox.use_property_decorate = False
+
+            obox.prop(r, "filepath", text="Base")
+
+            col = obox.column(align=True)
+            col.prop(scene, "frame_start", text="Frame Start")
+            col.prop(scene, "frame_end", text="End")
+            col.prop(scene, "frame_step", text="Step")
+            obox.prop(r, "fps", text="FPS")
+
+            obox.separator()
+            # Blender 4.5+ の media_type があれば先に表示
+            if hasattr(ims, "media_type"):
+                obox.prop(ims, "media_type", text="Media Type")
+            obox.prop(ims, "file_format", text="Format")
+            fmt = ims.file_format
+            is_movie = (
+                getattr(ims, "media_type", None) == "MOVIE"
+                or fmt in {"FFMPEG", "AVI_JPEG", "AVI_RAW"}
+            )
+
+            if is_movie or fmt == "FFMPEG":
+                ff = r.ffmpeg
+                obox.prop(ff, "format", text="Container")
+                obox.prop(ff, "codec", text="Codec")
+                obox.prop(ff, "constant_rate_factor", text="Quality")
+                obox.prop(ff, "ffmpeg_preset", text="Encode Speed")
+            else:
+                # 静止画系
+                obox.prop(ims, "color_mode", text="Color")
+                if fmt in {"PNG", "JPEG", "TIFF", "OPEN_EXR", "OPEN_EXR_MULTILAYER"}:
+                    if hasattr(ims, "color_depth"):
+                        obox.prop(ims, "color_depth", text="Depth")
+                if fmt in {"JPEG", "JPEG2000", "WEBP"}:
+                    if hasattr(ims, "quality"):
+                        obox.prop(ims, "quality", text="Quality")
+                if fmt in {"PNG"}:
+                    if hasattr(ims, "compression"):
+                        obox.prop(ims, "compression", text="Compression")
+
+            obox.separator()
+            res = obox.column(align=True)
+            res.prop(r, "resolution_x", text="Resolution X")
+            res.prop(r, "resolution_y", text="Y")
+            res.prop(r, "resolution_percentage", text="%")
+
         # enabled な Instance 件数を表示
         n_enabled = sum(1 for i in st.instances if i.enabled)
         render_box.label(

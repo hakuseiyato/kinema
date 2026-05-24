@@ -149,3 +149,8 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
         description="Active Instance セクションを折り畳む",
         default=False,
     )
+    render_output_collapsed: BoolProperty(
+        name="Render Output Collapsed",
+        description="Render の出力設定セクションを折り畳む",
+        default=True,
+    )

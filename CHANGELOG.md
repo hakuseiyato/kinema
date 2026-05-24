@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+### Added
+- **Render パネルに「出力設定」セクションを追加**: kinema 上から Blender
+  標準の出力設定を直接編集できる（折り畳み式、デフォルトは折り畳み）
+  - `filepath` / `frame_start` / `frame_end` / `frame_step` / `fps`
+  - `image_settings.media_type` (Blender 4.5+) / `file_format`
+  - 動画モード: `ffmpeg.format` (container) / `codec` / `constant_rate_factor` /
+    `ffmpeg_preset`
+  - 静止画: `color_mode` / `color_depth` / `quality` / `compression`
+  - `resolution_x` / `resolution_y` / `resolution_percentage`
+  - セクションヘッダ右側に現在の解決後拡張子 (`scene.render.file_extension`)
+    を常時表示
+- **`_resolve_format_label(scene)`**: Blender 4.5+ の `media_type=MOVIE` を
+  考慮してフォーマット表示を解決する。`media_type=MOVIE` の場合は
+  `file_format` が PNG 等のままでも `FFMPEG (<container>)` と表示するため、
+  「Format: FFMPEG / Extension: .png」のような見た目の不整合を解消
+
 ### Changed
 - **レンダーを非同期キュー方式に全面書き直し**: 旧実装は同期
   `bpy.ops.render.render(animation=True)` を for ループで呼んでいたため
