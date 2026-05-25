@@ -12,6 +12,7 @@ import time
 
 from ..utils import refs
 from . import follow_lookat, noise as noise_mod
+from . import target_resolve
 
 
 # 再帰防止フラグ
@@ -48,18 +49,50 @@ def reset_state() -> None:
     follow_lookat.reset_frame_cache()
 
 
-def _resolve_lookat_target(inst):
-    """LookAt Target を決定。明示指定優先 / 未指定なら Follow Target を自動採用。
-
-    follow_auto_lookat が True (デフォルト) なら、LookAt Target が空でも
-    Follow Target を見るようにする。「変な方向を見る」事故防止。
+def _resolve_follow_target(params):
+    """Follow Target を解決。use_collection モード時は collection 内の
+    hide_viewport==False の最初のオブジェクトを返す。解決失敗なら Object 直指定。
     """
+    return target_resolve.resolve_target(params, "follow_target")
+
+
+def _resolve_lookat_target(inst):
+    """LookAt Target を決定。
+
+    優先順位:
+      1. lookat_target_use_collection ON → collection で解決
+      2. lookat_target (Object 直指定)
+      3. follow_auto_lookat が True なら Follow Target を採用（collection 経由も含む）
+    "変な方向を見る" 事故防止のため、3 は最終フォールバック。
+    """
+    if getattr(inst, "lookat_target_use_collection", False):
+        coll = getattr(inst, "lookat_target_collection", None)
+        resolved = target_resolve.resolve_visible_in_collection(coll)
+        if resolved is not None:
+            return resolved
     explicit = refs.safe_object(inst.lookat_target)
     if explicit is not None:
         return explicit
     if getattr(inst, "follow_auto_lookat", True):
-        return refs.safe_object(inst.follow_target)
+        return _resolve_follow_target(inst)
     return None
+
+
+def _apply_dof_focus(cam, params) -> None:
+    """params.dof_focus_use_collection ON 時、cam.data.dof.focus_object に
+    collection 解決結果を書き戻す。OFF 時は触らない（標準 UI 経由のユーザー指定を尊重）。
+    """
+    if not getattr(params, "dof_focus_use_collection", False):
+        return
+    if cam is None or cam.data is None or not hasattr(cam.data, "dof"):
+        return
+    coll = getattr(params, "dof_focus_collection", None)
+    resolved = target_resolve.resolve_visible_in_collection(coll)
+    try:
+        if cam.data.dof.focus_object is not resolved:
+            cam.data.dof.focus_object = resolved
+    except Exception:
+        pass
 
 
 def _apply_preview_preset(scene) -> None:
@@ -102,18 +135,31 @@ def _apply_preview_preset(scene) -> None:
 
     dt = follow_lookat.compute_dt(scene)
 
-    # Follow
-    if refs.safe_object(cp.follow_target):
-        follow_lookat.update_follow(cam, cp, dt)
+    # Follow （Collection モード対応）
+    follow_obj = _resolve_follow_target(cp)
+    if follow_obj is not None:
+        follow_lookat.update_follow(cam, cp, dt, target_override=follow_obj)
 
-    # LookAt （明示指定 > Follow Target 自動採用）
-    explicit = refs.safe_object(cp.lookat_target)
-    if explicit is not None:
-        effective_lookat = explicit
-    elif getattr(cp, "follow_auto_lookat", True):
-        effective_lookat = refs.safe_object(cp.follow_target)
+    # LookAt （Collection / 明示指定 / Follow Target 自動採用）
+    if getattr(cp, "lookat_target_use_collection", False):
+        resolved = target_resolve.resolve_visible_in_collection(
+            getattr(cp, "lookat_target_collection", None)
+        )
     else:
-        effective_lookat = None
+        resolved = None
+    if resolved is not None:
+        effective_lookat = resolved
+    else:
+        explicit = refs.safe_object(cp.lookat_target)
+        if explicit is not None:
+            effective_lookat = explicit
+        elif getattr(cp, "follow_auto_lookat", True):
+            effective_lookat = _resolve_follow_target(cp)
+        else:
+            effective_lookat = None
+
+    # DoF Focus Collection モード
+    _apply_dof_focus(cam, cp)
 
     roll_deg = float(getattr(cp, "follow_rot_y", 0.0))
     if effective_lookat is not None:
@@ -156,10 +202,14 @@ def _apply_instances(scene) -> None:
         cam = refs.safe_object(inst.camera_ref)
         if not refs.is_camera_object(cam):
             continue
-        if refs.safe_object(inst.follow_target):
-            follow_lookat.update_follow(cam, inst, dt)
-        # LookAt は明示指定 > Follow Target 自動採用
+        # Follow （Collection モード対応）
+        follow_obj = _resolve_follow_target(inst)
+        if follow_obj is not None:
+            follow_lookat.update_follow(cam, inst, dt, target_override=follow_obj)
+        # LookAt は Collection モード / 明示指定 / Follow Target 自動採用 の順
         effective_lookat = _resolve_lookat_target(inst)
+        # DoF Focus Collection モード
+        _apply_dof_focus(cam, inst)
         roll_deg = float(getattr(inst, "follow_rot_y", 0.0))
         if effective_lookat is not None:
             follow_lookat.update_lookat_with_target(

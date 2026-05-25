@@ -44,23 +44,25 @@ def compute_dt(scene) -> float:
 # Follow
 # ---------------------------------------------------------------------------
 
-def update_follow(cam_obj, params, dt: float) -> None:
+def update_follow(cam_obj, params, dt: float, target_override=None) -> None:
     """カメラを follow_target の周りに **Euler XYZ 軸回転** で配置する。
 
     params に以下の属性を要求:
       follow_target, follow_distance, follow_rot_x, follow_rot_y, follow_rot_z,
       follow_height, follow_side, follow_damping
 
+    target_override: Collection モード等で解決済みの target を渡す。
+      None なら params.follow_target を refs.safe_object で解決して使う。
+
     軸回転 (target ローカル空間):
       - rot_x: X 軸回り（上下角）。正値=見下ろし、負値=見上げ
       - rot_y: Y 軸回り（カメラのロール、位置には影響しない）
       - rot_z: Z 軸回り（水平回り）。0=正面 (+Y), 90=右 (+X), 180=背後 (-Y), -90=左 (-X)
-
-    初期方向は target の +Y。これを XYZ 軸回転で動かしたベクトルが
-    カメラの相対方向ベクトルになる（Y 軸回転は (0,1,0) を回しても変わらないので
-    位置には影響しない＝ロール専用）。
     """
-    target = refs.safe_object(getattr(params, "follow_target", None))
+    if target_override is not None:
+        target = target_override
+    else:
+        target = refs.safe_object(getattr(params, "follow_target", None))
     if target is None or cam_obj is None:
         return
 

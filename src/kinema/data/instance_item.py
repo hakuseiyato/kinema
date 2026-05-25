@@ -178,6 +178,18 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
         name="Follow Target", type=bpy.types.Object, poll=_is_object_poll,
         update=_apply_now,
     )
+    follow_target_use_collection: BoolProperty(
+        name="Use Collection",
+        description="Follow Target を Collection で指定。"
+                    "毎フレーム collection 内の hide_viewport==False の最初の "
+                    "オブジェクトを動的に解決して target にする（Solo モード連動）",
+        default=False,
+        update=_apply_now,
+    )
+    follow_target_collection: PointerProperty(
+        name="Follow Target Collection", type=bpy.types.Collection,
+        update=_apply_now,
+    )
     follow_distance: FloatProperty(
         name="Distance", description="target からの半径距離",
         default=5.0, min=0.0, update=_apply_now,
@@ -234,7 +246,33 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
         name="LookAt Target", type=bpy.types.Object, poll=_is_object_poll,
         update=_apply_now,
     )
+    lookat_target_use_collection: BoolProperty(
+        name="Use Collection",
+        description="LookAt Target を Collection で指定。"
+                    "毎フレーム collection 内の hide_viewport==False の最初の "
+                    "オブジェクトを動的に解決して target にする",
+        default=False,
+        update=_apply_now,
+    )
+    lookat_target_collection: PointerProperty(
+        name="LookAt Target Collection", type=bpy.types.Collection,
+        update=_apply_now,
+    )
     lookat_damping: FloatProperty(name="LookAt Damping", default=0.3, min=0.0, max=1.0, update=_apply_now)
+
+    # --- DoF Focus (Camera Data.dof.focus_object の Collection モード拡張) ---
+    dof_focus_use_collection: BoolProperty(
+        name="DoF Focus Use Collection",
+        description="被写界深度の焦点オブジェクトを Collection で指定。"
+                    "毎フレーム collection 内の hide_viewport==False の最初の "
+                    "オブジェクトを cam.data.dof.focus_object に書き戻す",
+        default=False,
+        update=_apply_now,
+    )
+    dof_focus_collection: PointerProperty(
+        name="DoF Focus Collection", type=bpy.types.Collection,
+        update=_apply_now,
+    )
 
     # --- Noise ---
     noise_enabled: BoolProperty(name="Noise", default=False, update=_apply_now)

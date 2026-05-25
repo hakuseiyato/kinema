@@ -53,6 +53,15 @@ class KinemaCameraPreset(bpy.types.PropertyGroup):
         name="Follow Target", type=bpy.types.Object, poll=_is_object_poll,
         update=_apply_preview_now,
     )
+    follow_target_use_collection: BoolProperty(
+        name="Use Collection",
+        default=False,
+        update=_apply_preview_now,
+    )
+    follow_target_collection: PointerProperty(
+        name="Follow Target Collection", type=bpy.types.Collection,
+        update=_apply_preview_now,
+    )
     follow_distance: FloatProperty(
         name="Distance", default=5.0, min=0.0,
         update=_apply_preview_now,
@@ -93,8 +102,28 @@ class KinemaCameraPreset(bpy.types.PropertyGroup):
         name="LookAt Target", type=bpy.types.Object, poll=_is_object_poll,
         update=_apply_preview_now,
     )
+    lookat_target_use_collection: BoolProperty(
+        name="Use Collection",
+        default=False,
+        update=_apply_preview_now,
+    )
+    lookat_target_collection: PointerProperty(
+        name="LookAt Target Collection", type=bpy.types.Collection,
+        update=_apply_preview_now,
+    )
     lookat_damping: FloatProperty(
         name="LookAt Damping", default=0.3, min=0.0, max=1.0,
+        update=_apply_preview_now,
+    )
+
+    # --- DoF Focus Collection mode ---
+    dof_focus_use_collection: BoolProperty(
+        name="DoF Focus Use Collection",
+        default=False,
+        update=_apply_preview_now,
+    )
+    dof_focus_collection: PointerProperty(
+        name="DoF Focus Collection", type=bpy.types.Collection,
         update=_apply_preview_now,
     )
 

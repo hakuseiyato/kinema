@@ -382,6 +382,57 @@ class KINEMA_PT_main(bpy.types.Panel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _draw_target_with_collection(layout, params, base_attr: str,
+                                  label: str = "Target",
+                                  object_ref_target=None) -> None:
+    """Follow/LookAt/DoF Focus 共通: Object/Collection モード切替付きの target UI。
+
+    base_attr:
+      - "follow_target": params.follow_target + follow_target_use_collection + follow_target_collection
+      - "lookat_target": 同上
+      - "dof_focus":     params.dof_focus_use_collection + dof_focus_collection（Object ref は cam.data.dof.focus_object）
+
+    object_ref_target: (data_owner, prop_name) の tuple。
+      指定されると、Object モード時に data_owner.prop_name を prop() する
+      （DoF の cam.data.dof.focus_object 用）。未指定なら params.{base_attr} を使う。
+    """
+    use_coll_attr = f"{base_attr}_use_collection"
+    coll_attr = f"{base_attr}_collection"
+    use_coll = bool(getattr(params, use_coll_attr, False))
+
+    # ヘッダ: モード切替トグル
+    head = layout.row(align=True)
+    head.prop(
+        params, use_coll_attr,
+        text="Collection モード",
+        icon="OUTLINER_COLLECTION" if use_coll else "OBJECT_DATA",
+        toggle=True,
+    )
+
+    # 入力欄
+    if use_coll:
+        layout.prop(params, coll_attr, text=label)
+        # 解決結果プレビュー
+        try:
+            from ..runtime.target_resolve import resolve_visible_in_collection
+            coll = getattr(params, coll_attr, None)
+            resolved = resolve_visible_in_collection(coll)
+            info = layout.row()
+            info.alignment = "RIGHT"
+            if resolved is not None:
+                info.label(text=f"→ {resolved.name}", icon="HIDE_OFF")
+            elif coll is not None:
+                info.label(text="→ (可視オブジェクトなし)", icon="ERROR")
+        except Exception:
+            pass
+    else:
+        if object_ref_target is not None:
+            owner, prop_name = object_ref_target
+            layout.prop(owner, prop_name, text=label)
+        else:
+            layout.prop(params, base_attr, text=label)
+
+
 def _draw_camera_settings(layout, params, cam_data, kind: str = "instance") -> None:
     """Instance / Preset 共通の Follow/LookAt/Noise 編集 UI。
 
@@ -404,8 +455,10 @@ def _draw_camera_settings(layout, params, cam_data, kind: str = "instance") -> N
             )
     if show_copy:
         _draw_copy_paste(follow_head, "follow")
-    follow_col.prop(params, "follow_target", text="Target")
-    if refs.safe_object(params.follow_target):
+    _draw_target_with_collection(
+        follow_col, params, "follow_target", label="Target",
+    )
+    if refs.safe_object(params.follow_target) or getattr(params, "follow_target_use_collection", False):
         follow_col.prop(params, "follow_distance")
         angle_box = follow_col.box()
         angle_box.label(text="Rotation (X / Y / Z)", icon="ORIENTATION_GIMBAL")
@@ -436,7 +489,9 @@ def _draw_camera_settings(layout, params, cam_data, kind: str = "instance") -> N
     look_head.label(text="LookAt")
     if show_copy:
         _draw_copy_paste(look_head, "lookat")
-    look_col.prop(params, "lookat_target", text="Target")
+    _draw_target_with_collection(
+        look_col, params, "lookat_target", label="Target",
+    )
     if (
         not refs.safe_object(params.lookat_target)
         and refs.safe_object(params.follow_target)
@@ -484,8 +539,13 @@ def _draw_camera_settings(layout, params, cam_data, kind: str = "instance") -> N
         if show_copy:
             _draw_copy_paste(dof_head, "dof")
         if dof.use_dof:
-            dof_box.prop(dof, "focus_object", text="Focus Object")
-            if dof.focus_object is None:
+            # Focus Object — Object 直指定 or Collection モード（params 経由）
+            _draw_target_with_collection(
+                dof_box, params, "dof_focus",
+                label="Focus Object",
+                object_ref_target=(dof, "focus_object"),
+            )
+            if dof.focus_object is None and not getattr(params, "dof_focus_use_collection", False):
                 dof_box.prop(dof, "focus_distance", text="Focus Distance")
             aperture = dof_box.column(align=True)
             aperture.label(text="Aperture")
