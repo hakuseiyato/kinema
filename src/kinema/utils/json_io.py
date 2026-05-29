@@ -86,8 +86,38 @@ def deserialize_instance(inst, data: dict, resolve_object, resolve_collection) -
     return count
 
 
+_CUT_FIELDS = (
+    "name", "marker_name", "instance_name", "enabled",
+    "frame_override", "frame_start_override", "frame_end_override",
+    "notes", "orphan",
+)
+
+
+def serialize_cut(cut) -> dict:
+    out: dict[str, Any] = {}
+    for f in _CUT_FIELDS:
+        try:
+            out[f] = getattr(cut, f)
+        except Exception:
+            pass
+    return out
+
+
+def deserialize_cut(cut, data: dict) -> int:
+    count = 0
+    for f in _CUT_FIELDS:
+        if f not in data:
+            continue
+        try:
+            setattr(cut, f, data[f])
+            count += 1
+        except Exception:
+            pass
+    return count
+
+
 def serialize_scene(scene_settings, kinema_version: str = "2.0.0") -> dict:
-    """Scene 全体（Instance / Preset Root / Instances Root 設定）を辞書化。"""
+    """Scene 全体（Instance / Cut / Preset Root / Instances Root 設定）を辞書化。"""
     import datetime as _dt
     return {
         "kinema_schema": SCHEMA_VERSION,
@@ -96,6 +126,7 @@ def serialize_scene(scene_settings, kinema_version: str = "2.0.0") -> dict:
         "preset_root_name": getattr(scene_settings, "preset_root_name", ""),
         "instances_root_name": getattr(scene_settings, "instances_root_name", ""),
         "instances": [serialize_instance(i) for i in scene_settings.instances],
+        "cuts": [serialize_cut(c) for c in getattr(scene_settings, "cuts", [])],
     }
 
 
@@ -130,4 +161,12 @@ def deserialize_scene(
         new_inst = add_instance()
         deserialize_instance(new_inst, inst_data, resolve_object, resolve_collection)
         added += 1
-    return {"ok": True, "added": added, "schema": schema}
+    # Cuts（旧スキーマには無いキーなので存在チェックで安全に）
+    cuts_added = 0
+    cuts_data = data.get("cuts")
+    if cuts_data and hasattr(scene_settings, "cuts"):
+        for cut_data in cuts_data:
+            new_cut = scene_settings.cuts.add()
+            deserialize_cut(new_cut, cut_data)
+            cuts_added += 1
+    return {"ok": True, "added": added, "cuts_added": cuts_added, "schema": schema}

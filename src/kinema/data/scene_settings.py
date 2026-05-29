@@ -15,7 +15,7 @@ from bpy.props import (
 )
 
 from ..config import constants as C
-from . import preset_item, instance_item
+from . import preset_item, instance_item, cut_item
 
 
 def _select_only_object(context, obj):
@@ -131,6 +131,13 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
         update=_on_active_instance_changed,
     )
 
+    # --- Cut 一覧（Timeline Marker と紐付くカット情報）---
+    cuts: CollectionProperty(type=cut_item.KinemaCut)
+    active_cut_index: IntProperty(
+        name="Active Cut",
+        default=0,
+    )
+
     # --- 動作 ---
     auto_preview_on_select: BoolProperty(
         name="Auto Preview on Select",
@@ -152,5 +159,10 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
     render_output_collapsed: BoolProperty(
         name="Render Output Collapsed",
         description="Render の出力設定セクションを折り畳む",
+        default=True,
+    )
+    cuts_collapsed: BoolProperty(
+        name="Cuts Collapsed",
+        description="Cuts セクションを折り畳む",
         default=True,
     )

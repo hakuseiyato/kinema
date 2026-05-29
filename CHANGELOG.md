@@ -4,6 +4,32 @@
 
 ## [Unreleased]
 
+### Added
+- **Cut（カット）データモデル + 関連 Operator 群**:
+  - Timeline Marker と紐付くカット情報を `scene.kinema.cuts` (CollectionProperty)
+    に保持。「あとからカットを増やす・名前を変える」を安全に扱う設計
+  - `KinemaCut`: `name` / `marker_name`（Marker 追跡 ID）/ `instance_name` /
+    `enabled` / `frame_override` / `frame_start_override` / `frame_end_override` /
+    `notes` / `orphan`
+  - 「Sync from Markers」Op: Timeline Marker を走査し、新規 Marker は新規 Cut
+    として追加。既存 Cut は `marker_name` で照合して設定保持。Marker が消えた
+    Cut は `orphan=True` をマークするが削除はしない（誤削除防止）
+  - 「Rename Cut」Op: Cut 名変更時に **Marker / Instance / Collection / Camera
+    を連動 rename**（cascade rename）。チェックボックスで個別 ON/OFF 可能
+  - 「Render Cuts」Op: `enabled` かつ非 `orphan` な Cut を順に
+    `<base>/<cut_name>/` サブフォルダへ非同期キューでバッチレンダー。Cut ごとに
+    `scene.frame_start` / `frame_end` / `scene.camera` を一時切替して描画
+  - 「Jump to Cut」/ 「Add Cut」/ 「Remove Cut」/ 「Move Cut」を追加
+  - `KINEMA_UL_cuts` UIList: enabled トグル + Marker アイコン + Instance 紐付
+    表示。orphan は警告アイコンで識別可能
+  - main_panel に「Cuts」セクション（折り畳み式、デフォルト閉じ）
+  - JSON Export/Import に `cuts` 配列を追加（既存 JSON は cuts 無しでも読込可）
+- **render_ops に per-item frame range サポート**:
+  - キューアイテムが 5-tuple `(sub_dir, camera, label, frame_start, frame_end)`
+    の場合、その render だけ範囲を上書きする
+  - `_finalize` でレンダー終了時に `scene.frame_start` / `frame_end` も復元
+  - 公開関数 `kickoff_queue_with_ranges()` を追加（cut_ops から使用）
+
 ### Fixed
 - **再生時に Key 入りカメラで Follow が効かない問題を修正**（重大バグ）:
   - 原因: `frame_change_pre` で kinema dispatch が走った直後に Blender の

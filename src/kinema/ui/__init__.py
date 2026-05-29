@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import bpy
 
-from . import main_panel, presets_view, instances_view
+from . import main_panel, presets_view, instances_view, cuts_view
 
 
 _CLASSES = (
     presets_view.KINEMA_UL_presets,
     instances_view.KINEMA_UL_instances,
+    cuts_view.KINEMA_UL_cuts,
     main_panel.KINEMA_PT_main,
 )
 

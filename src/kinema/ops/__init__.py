@@ -18,6 +18,7 @@ from . import (
     cineflow_import,
     bake_ops,
     render_ops,
+    cut_ops,
 )
 
 
@@ -57,6 +58,13 @@ _CLASSES = (
     render_ops.KINEMA_OT_render_selected_instances,
     render_ops.KINEMA_OT_render_active_instance,
     render_ops.KINEMA_OT_cancel_render_queue,
+    cut_ops.KINEMA_OT_sync_cuts_from_markers,
+    cut_ops.KINEMA_OT_add_cut,
+    cut_ops.KINEMA_OT_remove_cut,
+    cut_ops.KINEMA_OT_move_cut,
+    cut_ops.KINEMA_OT_rename_cut,
+    cut_ops.KINEMA_OT_jump_to_cut,
+    cut_ops.KINEMA_OT_render_cuts,
 )
 
 

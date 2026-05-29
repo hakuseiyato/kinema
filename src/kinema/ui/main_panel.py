@@ -242,6 +242,9 @@ class KINEMA_PT_main(bpy.types.Panel):
             else:
                 layout.label(text="アクティブ Instance にカメラがありません", icon="ERROR")
 
+        # --- Cuts ---
+        _draw_cuts_section(layout, scene, st)
+
         # --- Render ---
         render_box = layout.box()
         render_box.label(text="Render", icon="RENDER_ANIMATION")
@@ -592,6 +595,97 @@ def _cineflow_enabled() -> bool:
 
 def _kinema_handlers_active() -> bool:
     return any(
-        getattr(fn, "__name__", "") == "kinema_frame_change_pre"
-        for fn in bpy.app.handlers.frame_change_pre
+        getattr(fn, "__name__", "") == "kinema_frame_change_post"
+        for fn in bpy.app.handlers.frame_change_post
     )
+
+
+def _draw_cuts_section(layout, scene, st) -> None:
+    """Cuts セクション。Timeline Marker と紐付くカット一覧を表示。"""
+    box = layout.box()
+    collapsed = st.cuts_collapsed
+    hdr = box.row(align=True)
+    hdr.prop(
+        st, "cuts_collapsed",
+        text="", emboss=False,
+        icon="TRIA_RIGHT" if collapsed else "TRIA_DOWN",
+    )
+    hdr.label(text="Cuts", icon="MARKER_HLT")
+    # 件数 / orphan 件数
+    n_total = len(st.cuts)
+    n_orphan = sum(1 for c in st.cuts if c.orphan)
+    n_enabled = sum(1 for c in st.cuts if c.enabled and not c.orphan)
+    if n_orphan:
+        hdr.label(text=f"{n_enabled}/{n_total}  ⚠{n_orphan}")
+    else:
+        hdr.label(text=f"{n_enabled}/{n_total}")
+
+    if collapsed:
+        return
+
+    # Sync + Add/Remove 行
+    tools_row = box.row(align=True)
+    tools_row.operator(
+        "kinema.sync_cuts_from_markers", text="Sync from Markers", icon="FILE_REFRESH",
+    )
+    tools_row.operator("kinema.render_cuts", text="Render Cuts", icon="RENDER_ANIMATION")
+
+    # リスト
+    list_row = box.row()
+    list_row.template_list(
+        "KINEMA_UL_cuts", "",
+        st, "cuts",
+        st, "active_cut_index",
+        rows=4,
+    )
+    side = list_row.column(align=True)
+    side.operator("kinema.add_cut", text="", icon="ADD")
+    side.operator("kinema.remove_cut", text="", icon="REMOVE")
+    side.separator()
+    up = side.operator("kinema.move_cut", text="", icon="TRIA_UP")
+    up.direction = -1
+    dn = side.operator("kinema.move_cut", text="", icon="TRIA_DOWN")
+    dn.direction = 1
+    side.separator()
+    side.operator("kinema.jump_to_cut", text="", icon="PLAY")
+    side.operator("kinema.rename_cut", text="", icon="GREASEPENCIL")
+
+    # Active Cut 編集
+    idx = st.active_cut_index
+    if not (0 <= idx < len(st.cuts)):
+        return
+    cut = st.cuts[idx]
+
+    edit = box.box()
+    if cut.orphan:
+        warn = edit.row()
+        warn.alert = True
+        warn.label(
+            text=f"Marker '{cut.marker_name}' が見つかりません",
+            icon="ERROR",
+        )
+    edit.use_property_split = True
+    edit.use_property_decorate = False
+    edit.prop(cut, "name", text="Name")
+    edit.prop(cut, "marker_name", text="Marker")
+    edit.prop_search(cut, "instance_name", st, "instances", text="Instance")
+    edit.prop(cut, "enabled")
+
+    # フレーム範囲: override か Marker 由来
+    fr_row = edit.row(align=True)
+    fr_row.prop(cut, "frame_override", text="")
+    sub = fr_row.column(align=True)
+    sub.enabled = cut.frame_override
+    sub.prop(cut, "frame_start_override", text="Frame Start")
+    sub.prop(cut, "frame_end_override", text="End")
+    # Marker 由来の参考表示
+    if not cut.frame_override:
+        try:
+            from ..ops.cut_ops import _resolve_cut_frame_range, _sorted_markers
+            fs, fe = _resolve_cut_frame_range(scene, cut, _sorted_markers(scene))
+            info = edit.row()
+            info.label(text=f"  (Marker: F{fs} – {fe})")
+        except Exception:
+            pass
+
+    edit.prop(cut, "notes", text="Notes")

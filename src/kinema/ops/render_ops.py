@@ -169,6 +169,10 @@ def _finalize(scene, reason: str) -> None:
             scene.render.filepath = _render_saved["filepath"]
         if "camera" in _render_saved:
             scene.camera = _render_saved["camera"]
+        if "frame_start" in _render_saved:
+            scene.frame_start = _render_saved["frame_start"]
+        if "frame_end" in _render_saved:
+            scene.frame_end = _render_saved["frame_end"]
     except Exception:
         pass
     _render_saved.clear()
@@ -187,15 +191,30 @@ def _finalize(scene, reason: str) -> None:
 
 
 def _start_next_render():
-    """timer から呼ばれて、INVOKE_DEFAULT で render を開始。"""
+    """timer から呼ばれて、INVOKE_DEFAULT で render を開始。
+
+    キューアイテム形式は次の 2 種類をサポート:
+      - (sub_dir, camera, label)                          : 既定 frame range を使う
+      - (sub_dir, camera, label, frame_start, frame_end)  : 当該レンダーだけ範囲上書き
+    """
     if not _render_queue:
         return None
-    sub_dir, camera, label = _render_queue.pop(0)
+    item = _render_queue.pop(0)
+    if len(item) == 5:
+        sub_dir, camera, label, fs, fe = item
+    else:
+        sub_dir, camera, label = item
+        fs, fe = None, None
     scene = bpy.context.scene
     try:
         scene.render.filepath = sub_dir
         scene.camera = camera
-        print(f"[kinema:render] starting: {label}  →  {sub_dir}")
+        if fs is not None and fe is not None:
+            scene.frame_start = int(fs)
+            scene.frame_end = int(fe)
+            print(f"[kinema:render] starting: {label}  F{fs}-{fe}  →  {sub_dir}")
+        else:
+            print(f"[kinema:render] starting: {label}  →  {sub_dir}")
         bpy.ops.render.render("INVOKE_DEFAULT", animation=True)
     except Exception as exc:
         print(f"[kinema:render] error starting render: {exc}")
@@ -214,10 +233,12 @@ def _register_handlers():
             hook_list.append(fn)
 
 
-def _kickoff_queue(scene, queue_items: list[tuple[str, bpy.types.Object, str]]) -> bool:
+def _kickoff_queue(scene, queue_items: list) -> bool:
     """キューを積んで最初の render を起動。
 
-    queue_items: [(sub_dir, camera, label), ...]
+    queue_items の各要素は 3-tuple か 5-tuple:
+      - (sub_dir, camera, label)
+      - (sub_dir, camera, label, frame_start, frame_end)
     戻り値: 起動できたら True。
     """
     global _render_active
@@ -229,6 +250,8 @@ def _kickoff_queue(scene, queue_items: list[tuple[str, bpy.types.Object, str]]) 
     _render_saved.clear()
     _render_saved["filepath"] = scene.render.filepath
     _render_saved["camera"] = scene.camera
+    _render_saved["frame_start"] = scene.frame_start
+    _render_saved["frame_end"] = scene.frame_end
 
     _render_queue.clear()
     _render_queue.extend(queue_items)
@@ -238,6 +261,11 @@ def _kickoff_queue(scene, queue_items: list[tuple[str, bpy.types.Object, str]]) 
     # 最初のレンダーを起動
     bpy.app.timers.register(_start_next_render, first_interval=0.1)
     return True
+
+
+def kickoff_queue_with_ranges(scene, items) -> bool:
+    """外部 (cut_ops 等) から呼ぶ公開ラッパ。5-tuple 形式の items を直接渡す。"""
+    return _kickoff_queue(scene, items)
 
 
 # ---------------------------------------------------------------------------
