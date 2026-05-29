@@ -25,6 +25,21 @@ _dispatch_suspended = False
 # バースト抑制用: 直近の dispatch 時刻
 _last_dispatch_time: dict[str, float] = {}
 
+# ターゲット変更時の snap フラグ（次回 dispatch で damping を一度だけ無視）。
+# Instance Item / Camera Preset の follow_target / lookat_target 系プロパティ
+# 変更時に True にセットされる。dispatch 完了後にクリア。
+_force_snap_once: bool = False
+
+
+def request_snap_once() -> None:
+    """次回 dispatch で damping を一度だけ無視して即時追従させる。
+
+    Follow / LookAt ターゲット変更直後に呼ぶ。これがないと damping が大きい
+    ときに「ほとんど動かない」状態に見えることがある。
+    """
+    global _force_snap_once
+    _force_snap_once = True
+
 
 def suspend_dispatch():
     """`with` ブロック相当: dispatch を抑止する（バッチ書込開始時に呼ぶ）。"""
@@ -234,8 +249,10 @@ def dispatch(scene, force: bool = False) -> None:
     """frame_change_pre / depsgraph_update_post / update callback のエントリ。
 
     force=False 時はバースト抑制（240Hz 上限）を効かせる。
+    `request_snap_once()` 直後の呼び出しは burst を無視して必ず処理し、
+    damping cache をリセットしてから 1 回だけスナップ追従させる。
     """
-    global _in_dispatch
+    global _in_dispatch, _force_snap_once
     if _in_dispatch:
         return
     if _dispatch_suspended:
@@ -243,7 +260,14 @@ def dispatch(scene, force: bool = False) -> None:
     if not hasattr(scene, "kinema"):
         return
 
-    if not force:
+    snap_now = _force_snap_once
+    if snap_now:
+        # ターゲット変更直後の追従漏れ防止: damping を 1 回だけ無視させる。
+        # damping.compute_dt() は cache 不在 = 初回呼出として 0 を返すため、
+        # damping_alpha(_, 0) → 1.0 (スナップ) になる。
+        follow_lookat.reset_frame_cache()
+        _last_dispatch_time[scene.name] = time.monotonic()
+    elif not force:
         now = time.monotonic()
         last = _last_dispatch_time.get(scene.name, 0.0)
         if now - last < _BURST_MIN_INTERVAL:
@@ -260,3 +284,5 @@ def dispatch(scene, force: bool = False) -> None:
         _apply_preview_preset(scene)
     finally:
         _in_dispatch = False
+        if snap_now:
+            _force_snap_once = False

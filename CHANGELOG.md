@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Follow / LookAt のターゲット変更直後にカメラが追従しないケースを修正**:
+  - 原因: ターゲット変更 → `_apply_now` → `dispatch` の流れで `compute_dt`
+    が直前の dispatch からの経過時間（数 ms）を返し、`damping_alpha(0.3, 0.005)`
+    が約 0.03 になっていた。これでカメラが新理想位置の数% しか動かず、
+    体感として「追従しない」状態に見える
+  - `instance_dispatcher.request_snap_once()` を新設。Follow / LookAt の
+    target / target_use_collection / target_collection を変更する PointerProperty
+    の update callback (`_apply_now_snap` / `_apply_preview_now_snap`) で
+    snap 要求を送り、次回 dispatch で damping を 1 回だけ無視させる
+  - burst 抑制（240Hz cap）も snap 要求時は迂回。確実に snap dispatch が走る
+
 ### Added
 - **`use_damping` トグル（カメラ移動の遅延 ON/OFF 制御）**:
   - Instance / Preset 双方に `BoolProperty(default=True)` を追加

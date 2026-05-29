@@ -45,22 +45,32 @@ def _apply_preview_now(self, context):
         pass
 
 
+def _apply_preview_now_snap(self, context):
+    """Follow / LookAt のターゲット変更時。snap 要求してから _apply_preview_now。"""
+    try:
+        from ..runtime import instance_dispatcher  # noqa: PLC0415
+        instance_dispatcher.request_snap_once()
+    except Exception:
+        pass
+    _apply_preview_now(self, context)
+
+
 class KinemaCameraPreset(bpy.types.PropertyGroup):
     """Camera Data に紐づく事前設定。Instance とフィールド構成を揃える。"""
 
     # --- Follow ---
     follow_target: PointerProperty(
         name="Follow Target", type=bpy.types.Object, poll=_is_object_poll,
-        update=_apply_preview_now,
+        update=_apply_preview_now_snap,
     )
     follow_target_use_collection: BoolProperty(
         name="Use Collection",
         default=False,
-        update=_apply_preview_now,
+        update=_apply_preview_now_snap,
     )
     follow_target_collection: PointerProperty(
         name="Follow Target Collection", type=bpy.types.Collection,
-        update=_apply_preview_now,
+        update=_apply_preview_now_snap,
     )
     follow_distance: FloatProperty(
         name="Distance", default=5.0, min=0.0,
@@ -110,16 +120,16 @@ class KinemaCameraPreset(bpy.types.PropertyGroup):
     # --- LookAt ---
     lookat_target: PointerProperty(
         name="LookAt Target", type=bpy.types.Object, poll=_is_object_poll,
-        update=_apply_preview_now,
+        update=_apply_preview_now_snap,
     )
     lookat_target_use_collection: BoolProperty(
         name="Use Collection",
         default=False,
-        update=_apply_preview_now,
+        update=_apply_preview_now_snap,
     )
     lookat_target_collection: PointerProperty(
         name="LookAt Target Collection", type=bpy.types.Collection,
-        update=_apply_preview_now,
+        update=_apply_preview_now_snap,
     )
     lookat_damping: FloatProperty(
         name="LookAt Damping", default=0.3, min=0.0, max=1.0,

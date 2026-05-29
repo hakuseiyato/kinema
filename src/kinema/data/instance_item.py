@@ -79,6 +79,20 @@ def _on_name_changed(self, context):
         _renaming_in_progress.discard(uid)
 
 
+def _apply_now_snap(self, context):
+    """Follow / LookAt のターゲット変更時に呼ぶ。snap 要求してから _apply_now。
+
+    Damping が大きいと、ターゲット変更直後の dt が小さく見えてカメラが
+    ほとんど動かない症状になるため、1 度だけ damping を無視させる。
+    """
+    try:
+        from ..runtime import instance_dispatcher
+        instance_dispatcher.request_snap_once()
+    except Exception:
+        pass
+    _apply_now(self, context)
+
+
 def _apply_now(self, context):
     """Instance プロパティが変わった時に即座に Follow/LookAt/Noise を 1 ステップ適用。
 
@@ -176,7 +190,7 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
     # --- Follow ---
     follow_target: PointerProperty(
         name="Follow Target", type=bpy.types.Object, poll=_is_object_poll,
-        update=_apply_now,
+        update=_apply_now_snap,
     )
     follow_target_use_collection: BoolProperty(
         name="Use Collection",
@@ -184,11 +198,11 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
                     "毎フレーム collection 内の hide_viewport==False の最初の "
                     "オブジェクトを動的に解決して target にする（Solo モード連動）",
         default=False,
-        update=_apply_now,
+        update=_apply_now_snap,
     )
     follow_target_collection: PointerProperty(
         name="Follow Target Collection", type=bpy.types.Collection,
-        update=_apply_now,
+        update=_apply_now_snap,
     )
     follow_distance: FloatProperty(
         name="Distance", description="target からの半径距離",
@@ -254,7 +268,7 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
     # --- LookAt ---
     lookat_target: PointerProperty(
         name="LookAt Target", type=bpy.types.Object, poll=_is_object_poll,
-        update=_apply_now,
+        update=_apply_now_snap,
     )
     lookat_target_use_collection: BoolProperty(
         name="Use Collection",
@@ -262,11 +276,11 @@ class KinemaInstanceItem(bpy.types.PropertyGroup):
                     "毎フレーム collection 内の hide_viewport==False の最初の "
                     "オブジェクトを動的に解決して target にする",
         default=False,
-        update=_apply_now,
+        update=_apply_now_snap,
     )
     lookat_target_collection: PointerProperty(
         name="LookAt Target Collection", type=bpy.types.Collection,
-        update=_apply_now,
+        update=_apply_now_snap,
     )
     lookat_damping: FloatProperty(name="LookAt Damping", default=0.3, min=0.0, max=1.0, update=_apply_now)
 
