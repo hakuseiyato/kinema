@@ -19,8 +19,17 @@ from . import instance_dispatcher
 # ---------------------------------------------------------------------------
 
 @persistent
-def kinema_frame_change_pre(scene, depsgraph):  # noqa: ARG001
-    # 再生時の取りこぼし防止のため force=True
+def kinema_frame_change_post(scene, depsgraph):  # noqa: ARG001
+    """フレーム切替後の Follow/LookAt 適用。
+
+    重要: `frame_change_pre` ではなく **post** を使う。pre は anim eval より
+    前なので kinema の書込が直後の anim eval（keyframe 復元）で上書きされる。
+    特に再生中は depsgraph_update_post が burst 抑制で skip され、結果として
+    keyframe 値だけが render される＝「Key 入りカメラで follow が効かない」
+    バグになる。post は anim eval 完了後に走るので kinema の書込が勝つ。
+
+    再生時の取りこぼし防止のため force=True。
+    """
     instance_dispatcher.dispatch(scene, force=True)
 
 
@@ -86,10 +95,30 @@ def kinema_load_post(_dummy):
 # ---------------------------------------------------------------------------
 
 _HOOKS = (
-    ("frame_change_pre", kinema_frame_change_pre),
+    ("frame_change_post", kinema_frame_change_post),
     ("depsgraph_update_post", kinema_depsgraph_update_post),
     ("load_post", kinema_load_post),
 )
+
+
+# レガシー名残のフックを掃除する（旧 frame_change_pre 版がぶら下がってると
+# kinema_frame_change_pre が二重稼働して anim eval 上書き問題が再発する）。
+_LEGACY_HOOKS = (
+    ("frame_change_pre", "kinema_frame_change_pre"),
+)
+
+
+def _remove_legacy_hooks() -> None:
+    for hook_name, fn_name in _LEGACY_HOOKS:
+        hook = getattr(bpy.app.handlers, hook_name, None)
+        if hook is None:
+            continue
+        for existing in list(hook):
+            if getattr(existing, "__name__", "") == fn_name:
+                try:
+                    hook.remove(existing)
+                except Exception:
+                    pass
 
 
 def _is_cineflow_enabled() -> bool:
@@ -120,6 +149,7 @@ def register_all() -> bool:
 
     戻り値: 実際に登録したら True、skip したら False。
     """
+    _remove_legacy_hooks()
     if _is_cineflow_enabled():
         # cineflow と同時稼働すると scene.camera を奪い合うので待機
         unregister_all()
@@ -132,6 +162,7 @@ def register_all() -> bool:
 
 
 def unregister_all() -> None:
+    _remove_legacy_hooks()
     for name, fn in _HOOKS:
         hook = getattr(bpy.app.handlers, name)
         _remove_if_present(hook, fn)

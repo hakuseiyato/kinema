@@ -5,6 +5,17 @@
 ## [Unreleased]
 
 ### Fixed
+- **再生時に Key 入りカメラで Follow が効かない問題を修正**（重大バグ）:
+  - 原因: `frame_change_pre` で kinema dispatch が走った直後に Blender の
+    animation evaluation が cam.location を keyframe 値で上書きしていた。
+    続く `depsgraph_update_post` の dispatch は burst 抑制 (1/240s) で skip
+    されるため、render は keyframe 値そのままで描画されていた。
+    手動でフレーム送りする場合は操作間隔が >4ms あるので burst を抜けて
+    dispatch が走り、結果として「手動なら追従、再生なら追従しない」になっていた
+  - `kinema_frame_change_pre` を `kinema_frame_change_post` に変更。post は
+    anim eval 完了後に走るため、kinema の書込が keyframe 値の上に確実に勝つ
+  - `_remove_legacy_hooks()` を追加して旧 `kinema_frame_change_pre` が古い
+    .blend に残っていても掃除する
 - **Follow / LookAt のターゲット変更直後にカメラが追従しないケースを修正**:
   - 原因: ターゲット変更 → `_apply_now` → `dispatch` の流れで `compute_dt`
     が直前の dispatch からの経過時間（数 ms）を返し、`damping_alpha(0.3, 0.005)`
