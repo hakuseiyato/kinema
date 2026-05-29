@@ -91,6 +91,16 @@ class KinemaCameraPreset(bpy.types.PropertyGroup):
         name="Follow Damping", default=0.3, min=0.0, max=1.0,
         update=_apply_preview_now,
     )
+    use_damping: BoolProperty(
+        name="Use Damping",
+        description=(
+            "カメラ移動に遅延（damping）を入れるか。"
+            "OFF にすると Follow Damping / LookAt Damping を無視して即時追従する"
+            "（damping=0 と等価）。スライダーの値は保持され、再度 ON にすれば戻る"
+        ),
+        default=True,
+        update=_apply_preview_now,
+    )
     follow_auto_lookat: BoolProperty(
         name="Auto Look at Follow Target",
         default=True,

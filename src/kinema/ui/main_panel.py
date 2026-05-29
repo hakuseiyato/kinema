@@ -480,7 +480,12 @@ def _draw_camera_settings(layout, params, cam_data, kind: str = "instance") -> N
             op.rot_z = rz
         follow_col.prop(params, "follow_height")
         follow_col.prop(params, "follow_side")
-        follow_col.prop(params, "follow_damping")
+        # Follow Damping + use_damping トグル（横並び）
+        damp_row = follow_col.row(align=True)
+        damp_row.prop(params, "use_damping", text="", icon="MOD_TIME")
+        sub = damp_row.row(align=True)
+        sub.enabled = getattr(params, "use_damping", True)
+        sub.prop(params, "follow_damping")
         follow_col.prop(params, "follow_auto_lookat")
 
     # LookAt
@@ -504,7 +509,11 @@ def _draw_camera_settings(layout, params, cam_data, kind: str = "instance") -> N
     if refs.safe_object(params.lookat_target) or (
         refs.safe_object(params.follow_target) and params.follow_auto_lookat
     ):
-        look_col.prop(params, "lookat_damping")
+        # use_damping は Follow 側と共有なので、ここではトグル UI は出さず
+        # 灰色表示だけ揃える
+        ld_row = look_col.row(align=True)
+        ld_row.enabled = getattr(params, "use_damping", True)
+        ld_row.prop(params, "lookat_damping")
 
     # Noise
     noise_col = layout.column(align=True)

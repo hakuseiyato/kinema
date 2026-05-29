@@ -76,6 +76,7 @@ _FOLLOW_FIELDS = (
     ("inst", "follow_side"),
     ("inst", "follow_damping"),
     ("inst", "follow_auto_lookat"),
+    ("inst", "use_damping"),
 )
 _FOLLOW_OBJECT_REF = ("inst", "follow_target")
 

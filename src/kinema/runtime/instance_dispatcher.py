@@ -163,8 +163,9 @@ def _apply_preview_preset(scene) -> None:
 
     roll_deg = float(getattr(cp, "follow_rot_y", 0.0))
     if effective_lookat is not None:
+        lookat_damp = cp.lookat_damping if getattr(cp, "use_damping", True) else 0.0
         follow_lookat.update_lookat_with_target(
-            cam, effective_lookat, cp.lookat_damping, dt, roll_deg=roll_deg,
+            cam, effective_lookat, lookat_damp, dt, roll_deg=roll_deg,
         )
     else:
         follow_lookat.cleanup_lookat_proxy(cam)
@@ -212,8 +213,9 @@ def _apply_instances(scene) -> None:
         _apply_dof_focus(cam, inst)
         roll_deg = float(getattr(inst, "follow_rot_y", 0.0))
         if effective_lookat is not None:
+            lookat_damp = inst.lookat_damping if getattr(inst, "use_damping", True) else 0.0
             follow_lookat.update_lookat_with_target(
-                cam, effective_lookat, inst.lookat_damping, dt, roll_deg=roll_deg,
+                cam, effective_lookat, lookat_damp, dt, roll_deg=roll_deg,
             )
         else:
             # 何も注視するものがない → 既存の Proxy を掃除

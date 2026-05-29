@@ -96,7 +96,12 @@ def update_follow(cam_obj, params, dt: float, target_override=None) -> None:
         + tangent_right * side
     )
 
-    alpha = damping_alpha(params.follow_damping, dt)
+    # use_damping=False のときは damping を 0 とみなしてスナップ
+    if getattr(params, "use_damping", True):
+        damping_val = float(params.follow_damping)
+    else:
+        damping_val = 0.0
+    alpha = damping_alpha(damping_val, dt)
     if alpha >= 0.999:
         cam_obj.location = ideal
     else:

@@ -5,6 +5,18 @@
 ## [Unreleased]
 
 ### Added
+- **`use_damping` トグル（カメラ移動の遅延 ON/OFF 制御）**:
+  - Instance / Preset 双方に `BoolProperty(default=True)` を追加
+  - OFF にすると `follow_damping` / `lookat_damping` を無視して即時追従
+    （damping=0 と等価）。スライダー値は保持されるので再 ON で元に戻る
+  - `runtime/follow_lookat.update_follow`: `params.use_damping` を見て
+    damping 値を 0 に置換
+  - `runtime/instance_dispatcher`: `update_lookat_with_target` 呼出時に
+    `inst.use_damping` / `cp.use_damping` を見て lookat_damping を切替
+  - UI: Follow Damping 行に時計アイコンの トグルを横並びで配置。
+    LookAt Damping 側はトグルと連動して灰色表示
+  - JSON I/O / Copy & Paste (Follow グループ) / Preset → Instance Load /
+    Move Instance に全て `use_damping` を含めた
 - **Render パネルに「出力設定」セクションを追加**: kinema 上から Blender
   標準の出力設定を直接編集できる（折り畳み式、デフォルトは折り畳み）
   - `filepath` / `frame_start` / `frame_end` / `frame_step` / `fps`

@@ -164,6 +164,7 @@ def _copy_camera_preset_to_instance(src_cam, inst) -> None:
     inst.follow_side = cp.follow_side
     inst.follow_damping = cp.follow_damping
     inst.follow_auto_lookat = cp.follow_auto_lookat
+    inst.use_damping = getattr(cp, "use_damping", True)
     # LookAt
     inst.lookat_target = cp.lookat_target
     inst.lookat_damping = cp.lookat_damping

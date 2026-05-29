@@ -20,6 +20,7 @@ _INSTANCE_SCALAR_FIELDS = (
     "follow_height", "follow_side", "follow_damping",
     "follow_auto_lookat",
     "lookat_damping",
+    "use_damping",
     "noise_enabled", "noise_strength_pos", "noise_strength_rot",
     "noise_frequency", "noise_seed",
 )
