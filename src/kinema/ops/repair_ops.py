@@ -145,52 +145,89 @@ def _scan_dead_modifier_refs() -> list[tuple[bpy.types.Object, "bpy.types.Modifi
     return pairs
 
 
-def _scan_dead_drivers() -> list[tuple[str, str, str]]:
-    """全 ID の driver で dead variable target を列挙。
+def _check_drivers_on(id_block, label_prefix: str, found: list) -> None:
+    """与えられた id_block の driver をスキャンして found に追記する。"""
+    try:
+        ad = id_block.animation_data
+    except Exception:
+        return
+    if ad is None:
+        return
+    try:
+        drivers = list(ad.drivers)
+    except Exception:
+        return
+    for fc in drivers:
+        try:
+            drv = fc.driver
+        except Exception:
+            continue
+        dead = False
+        for var in drv.variables:
+            for tgt in var.targets:
+                try:
+                    obj_ref = tgt.id
+                except ReferenceError:
+                    dead = True
+                    break
+                except Exception:
+                    continue
+                if obj_ref is None:
+                    continue
+                try:
+                    _ = obj_ref.name
+                except ReferenceError:
+                    dead = True
+                    break
+                except Exception:
+                    pass
+            if dead:
+                break
+        if dead:
+            found.append((label_prefix, fc.data_path, "dead driver var"))
 
-    Returns: [(id_block_name, datapath, reason), ...]
+
+def _scan_dead_drivers() -> list[tuple[str, str, str]]:
+    """全 ID + その node_tree の driver で dead variable target を列挙。
+
+    **重要**: scene.node_tree（Compositor）/ material.node_tree / world.node_tree
+    の driver もスキャンする。Compositor の broken driver が render hang の
+    典型原因だった事例（2026-05）への対策。
+
+    Returns: [(label, datapath, reason), ...]
     """
     found: list = []
-    for collection_attr in ("objects", "scenes", "cameras", "materials", "meshes"):
+    # 1. 通常 ID の direct animation_data
+    for collection_attr in ("objects", "scenes", "cameras", "materials",
+                            "meshes", "worlds", "lights"):
         try:
             data_iter = getattr(bpy.data, collection_attr)
         except Exception:
             continue
         for id_block in data_iter:
             try:
-                ad = id_block.animation_data
+                name = id_block.name
             except Exception:
                 continue
-            if ad is None:
-                continue
+            _check_drivers_on(id_block, f"{collection_attr}:{name}", found)
+
+    # 2. node_tree を持つもの (Compositor / Material nodes / World nodes / Geometry Nodes)
+    #    これが今回の Compositor broken driver を検出するキモ
+    for collection_attr in ("scenes", "materials", "worlds", "lights",
+                            "node_groups"):
+        try:
+            data_iter = getattr(bpy.data, collection_attr)
+        except Exception:
+            continue
+        for id_block in data_iter:
             try:
-                drivers = list(ad.drivers)
+                name = id_block.name
             except Exception:
                 continue
-            for fc in drivers:
-                try:
-                    drv = fc.driver
-                except Exception:
-                    continue
-                for var in drv.variables:
-                    for tgt in var.targets:
-                        try:
-                            obj_ref = tgt.id
-                        except ReferenceError:
-                            found.append((id_block.name, fc.data_path,
-                                          f"driver var '{var.name}' dead id"))
-                            continue
-                        except Exception:
-                            continue
-                        if obj_ref is None:
-                            continue
-                        try:
-                            _ = obj_ref.name
-                        except ReferenceError:
-                            found.append((id_block.name, fc.data_path,
-                                          f"driver var '{var.name}' dead id"))
-                        except Exception:
-                            pass
+            tree = getattr(id_block, "node_tree", None)
+            if tree is None:
+                continue
+            _check_drivers_on(tree, f"{collection_attr}:{name}/node_tree", found)
     return found
 
 
