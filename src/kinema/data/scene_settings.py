@@ -166,3 +166,23 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
         description="Cuts セクションを折り畳む",
         default=False,
     )
+
+    # --- Render dispatch（単一ボタン + トグルで何を出力するか決める）---
+    render_source: bpy.props.EnumProperty(
+        name="Render Source",
+        description="Render ボタンが対象にする source",
+        items=(
+            ("CUTS", "Cuts", "Cut を対象にする"),
+            ("INSTANCES", "Instances", "Instance を対象にする"),
+        ),
+        default="CUTS",
+    )
+    render_mode: bpy.props.EnumProperty(
+        name="Render Mode",
+        description="Render ボタンが対象を絞る粒度",
+        items=(
+            ("ACTIVE", "Active", "選択中の 1 個だけ"),
+            ("ENABLED", "Enabled", "enabled=ON のものすべて"),
+        ),
+        default="ACTIVE",
+    )

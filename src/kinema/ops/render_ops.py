@@ -239,6 +239,137 @@ def kickoff_queue_with_ranges(scene, items) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Deferred render: operator の execute からは直接 render しない
+# ---------------------------------------------------------------------------
+#
+# 問題:
+#   - operator の execute() の中から bpy.ops.render.render(animation=True) を
+#     呼ぶと、Blender の operator context が呼出側 (kinema.render) のまま
+#     ネストしてしまい、render が「正常に開始されない」ことがある
+#
+# 解決:
+#   - operator は items を pending に積んで FINISHED を返すだけ
+#   - timer が次の event tick で起動し、operator context が抜けた後に
+#     bpy.ops.render.render(animation=True) を呼ぶ
+#   - 旧 INVOKE_DEFAULT + timer の問題（INVOKE による depsgraph rebuild
+#     競合）は同期 render を使うので発生しない
+
+_pending_items: list = []
+_pending_scene_name: str = ""
+
+
+def _deferred_render_runner():
+    """timer から呼ばれて pending items を同期実行する。"""
+    global _pending_items, _pending_scene_name
+    items = list(_pending_items)
+    scene_name = _pending_scene_name
+    _pending_items.clear()
+    _pending_scene_name = ""
+    if not items:
+        return None
+    scene = bpy.data.scenes.get(scene_name)
+    if scene is None:
+        print(f"[kinema:render] deferred: scene '{scene_name}' missing")
+        return None
+    print(f"[kinema:render] deferred render start: {len(items)} item(s)")
+    run_render_queue(scene, items)
+    return None  # timer は 1 度きり
+
+
+def schedule_render(scene, items) -> int:
+    """items を pending に積んで timer 起動。
+
+    Returns: 実際にスケジュールされた item 数（0 なら何もしない）。
+    """
+    global _pending_items, _pending_scene_name
+    if not items:
+        return 0
+    if _render_active:
+        print("[kinema:render] schedule: already rendering, abort")
+        return 0
+    _pending_items[:] = items
+    _pending_scene_name = scene.name
+    bpy.app.timers.register(_deferred_render_runner, first_interval=0.05)
+    return len(items)
+
+
+# ---------------------------------------------------------------------------
+# 統一 Render Operator（単一ボタン）
+# ---------------------------------------------------------------------------
+
+def _resolve_render_items(scene) -> tuple[list, str]:
+    """`scene.kinema.render_source` / `render_mode` に従って items を構築。
+
+    Returns (items, label)。label は UI / report 用。
+    """
+    st = scene.kinema
+    source = getattr(st, "render_source", "CUTS")
+    mode = getattr(st, "render_mode", "ACTIVE")
+
+    base_dir = _normalize_dir(scene.render.filepath)
+    items: list = []
+    label = ""
+
+    if source == "INSTANCES":
+        # Instance ベース
+        if mode == "ACTIVE":
+            idx = st.active_instance_index
+            pool = [st.instances[idx]] if 0 <= idx < len(st.instances) else []
+        else:  # ENABLED
+            pool = [i for i in st.instances if i.enabled]
+        for inst in pool:
+            cam = refs.safe_object(inst.camera_ref)
+            if not refs.is_camera_object(cam):
+                continue
+            sub = base_dir + inst.name + os.sep
+            items.append((sub, cam.name, inst.name))
+        label = f"Instance:{mode}"
+    else:
+        # Cut ベース（cut_ops の helper を再利用）
+        from . import cut_ops as _cut_ops
+        if mode == "ACTIVE":
+            idx = st.active_cut_index
+            cuts = [st.cuts[idx]] if 0 <= idx < len(st.cuts) else []
+        else:  # ENABLED
+            cuts = [c for c in st.cuts if c.enabled and not c.orphan]
+        if cuts:
+            items, _skipped = _cut_ops._build_cut_queue_items(scene, cuts)
+        label = f"Cut:{mode}"
+
+    return items, label
+
+
+class KINEMA_OT_render(KinemaOperator):
+    """統一 Render Operator。`scene.kinema.render_source` と `render_mode` を見て
+    実際の対象を決定して同期レンダーする。
+
+    Single-button 設計の中心。UI 側で source / mode をトグルしておけば、
+    Render ボタンは 1 つで全パターンを実行できる。
+    """
+    bl_idname = "kinema.render"
+    bl_label = "Render"
+    bl_description = "Render Source / Mode の設定に従って同期レンダーを実行"
+
+    def run(self, context):
+        scene = context.scene
+        items, label = _resolve_render_items(scene)
+        if not items:
+            self.report({"WARNING"}, f"対象なし ({label})")
+            return {"CANCELLED"}
+        if _render_active:
+            self.report({"WARNING"}, "既にレンダリング中です")
+            return {"CANCELLED"}
+
+        # deferred で実行（operator context から抜けてから render 起動）
+        n = schedule_render(scene, items)
+        if n > 0:
+            self.report({"INFO"}, f"Scheduled {n} item(s) ({label})")
+            return {"FINISHED"}
+        self.report({"ERROR"}, "スケジュール失敗")
+        return {"CANCELLED"}
+
+
+# ---------------------------------------------------------------------------
 # Operators
 # ---------------------------------------------------------------------------
 

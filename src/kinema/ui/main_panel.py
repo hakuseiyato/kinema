@@ -538,45 +538,54 @@ def _draw_render_section(layout, scene, st, context) -> None:
     # ── Cuts サブセクション ──
     _draw_cuts_subsection(rbox, scene, st)
 
-    # ── Render Targets ボタン群 ──
+    # ── Render（単一ボタン + トグル）──
     rbox.separator()
     targets_box = rbox.box()
-    targets_box.label(text="Render Targets", icon="OUTPUT")
+    targets_box.label(text="Render", icon="OUTPUT")
     targets_box.enabled = not _render_ops.is_queue_active()
 
-    # Instance ベース
-    n_enabled = sum(1 for i in st.instances if i.enabled)
-    inst_row = targets_box.row(align=True)
-    inst_row.label(
-        text=f"Instances ({n_enabled}/{len(st.instances)} enabled)",
-        icon="OUTLINER_OB_CAMERA",
-    )
-    inst_btns = targets_box.row(align=True)
-    inst_btns.operator(
-        "kinema.render_active_instance", text="Active Only",
-        icon="OUTLINER_OB_CAMERA",
-    )
-    inst_btns.operator(
-        "kinema.render_selected_instances", text="Enabled",
-        icon="HIDE_OFF",
-    )
+    # Source トグル（Cuts / Instances）
+    src_row = targets_box.row(align=True)
+    src_row.label(text="Source:")
+    src_row.prop(st, "render_source", expand=True)
 
-    # Cut ベース
-    n_cuts_enabled = sum(1 for c in st.cuts if c.enabled and not c.orphan)
-    cut_row = targets_box.row(align=True)
-    cut_row.label(
-        text=f"Cuts ({n_cuts_enabled}/{len(st.cuts)} enabled)",
-        icon="MARKER_HLT",
-    )
-    cut_btns = targets_box.row(align=True)
-    op_a = cut_btns.operator(
-        "kinema.render_cuts", text="Active Cut", icon="RENDER_ANIMATION",
-    )
-    op_a.scope = "ACTIVE"
-    op_e = cut_btns.operator(
-        "kinema.render_cuts", text="All Enabled", icon="HIDE_OFF",
-    )
-    op_e.scope = "ENABLED"
+    # Mode トグル（Active / Enabled）
+    mode_row = targets_box.row(align=True)
+    mode_row.label(text="Mode:")
+    mode_row.prop(st, "render_mode", expand=True)
+
+    # 対象件数を計算してボタンラベルに反映
+    if st.render_source == "INSTANCES":
+        if st.render_mode == "ACTIVE":
+            idx = st.active_instance_index
+            n_target = 1 if 0 <= idx < len(st.instances) else 0
+            label = "Active Instance"
+        else:
+            n_target = sum(1 for i in st.instances if i.enabled)
+            label = f"{n_target} Enabled Instances"
+    else:
+        if st.render_mode == "ACTIVE":
+            idx = st.active_cut_index
+            n_target = 1 if 0 <= idx < len(st.cuts) else 0
+            label = "Active Cut"
+        else:
+            n_target = sum(1 for c in st.cuts if c.enabled and not c.orphan)
+            label = f"{n_target} Enabled Cuts"
+
+    # 単一の Render ボタン
+    btn_row = targets_box.row(align=True)
+    btn_row.scale_y = 1.6
+    if n_target == 0:
+        btn_row.enabled = False
+        btn_row.operator(
+            "kinema.render", text=f"(no target: {label})",
+            icon="RENDER_ANIMATION",
+        )
+    else:
+        btn_row.operator(
+            "kinema.render", text=f"Render  ({label})",
+            icon="RENDER_ANIMATION",
+        )
 
 
 def _draw_render_output_subsection(parent_box, scene, st) -> None:

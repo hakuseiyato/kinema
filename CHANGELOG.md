@@ -4,6 +4,37 @@
 
 ## [Unreleased]
 
+### Changed (UX): 単一 Render ボタン + Source/Mode トグル
+- **複数のレンダーボタンを 1 つに集約**（ユーザー要望）:
+  - 旧: Render セクションに `Active Cut` / `All Enabled` / `Active Only` /
+    `Enabled` の **4 つのボタン**が並んでいた
+  - 新: **1 つの `Render` ボタン** + `Source` / `Mode` トグル 2 行で完結
+    ```
+    Source:  [Cuts] [Instances]       ← トグル
+    Mode:    [Active] [All Enabled]   ← トグル
+    [▶ Render  (N Enabled Cuts)]      ← 単一ボタン（対象件数を表示）
+    ```
+  - 対象が 0 件のときはボタンが灰色 + "(no target)" 表示で誤クリック防止
+- **`scene.kinema.render_source` / `render_mode`** EnumProperty 2 個を追加。
+  シーンに永続化されるので、再起動後も設定保持
+- **`KINEMA_OT_render`**（idname: `kinema.render`）新設:
+  - source / mode を見て items を組立、`schedule_render()` に渡すだけ
+  - 旧 `KINEMA_OT_render_cuts` `KINEMA_OT_render_selected_instances` `_active_instance`
+    は内部互換のため残置（直接呼出用）
+
+### Fixed: レンダリングが正常に開始されない問題
+- **operator execute 内から直接 `bpy.ops.render.render(animation=True)`** を
+  呼ぶと、呼出側 (kinema.render) の operator context がネストして render が
+  起動しない / 不安定になる事象を解消
+- **deferred 実行**に変更:
+  - operator は `_pending_items` に積んで FINISHED 返却
+  - 0.05s 後の timer 経由で `_deferred_render_runner` が同期 render 起動
+  - operator context が完全に抜けた状態で render が始まるので安定
+  - INVOKE_DEFAULT は使わないので depsgraph rebuild 競合クラッシュは
+    引き続き回避
+- System Console に詳細ログ (`[kinema:render] deferred render start: N item(s)`)
+  を出すので「何が起きているか」確認可能
+
 ### Changed (BIG: 非同期キュー → 同期実行に切替、クラッシュ回避)
 - **レンダー実行を同期型に書き直し**:
   - 旧 timer + `INVOKE_DEFAULT` 方式は Blender 内部で「render 中の scene
