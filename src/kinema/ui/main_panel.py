@@ -623,12 +623,24 @@ def _draw_cuts_section(layout, scene, st) -> None:
     if collapsed:
         return
 
-    # Sync + Add/Remove 行
+    # Sync + Render 行
     tools_row = box.row(align=True)
     tools_row.operator(
         "kinema.sync_cuts_from_markers", text="Sync from Markers", icon="FILE_REFRESH",
     )
-    tools_row.operator("kinema.render_cuts", text="Render Cuts", icon="RENDER_ANIMATION")
+    # Render は scope ごとにボタンを並べる
+    render_row = box.row(align=True)
+    render_row.operator(
+        "kinema.render_active_cut", text="Active", icon="RENDER_ANIMATION",
+    )
+    op_e = render_row.operator(
+        "kinema.render_cuts", text="Enabled", icon="HIDE_OFF",
+    )
+    op_e.scope = "ENABLED"
+    op_r = render_row.operator(
+        "kinema.render_cuts", text="Range...", icon="SEQUENCE",
+    )
+    op_r.scope = "RANGE"
 
     # リスト
     list_row = box.row()

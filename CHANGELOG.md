@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+### Fixed (crash hardening)
+- **レンダーキューの timer 内 `bpy.context.scene` 参照を撤去**:
+  - timer 内で `bpy.context.scene` を参照するのはクラッシュの典型パターン
+    （context が無効になる瞬間がある）。キュー対象 Scene 名を保持し、
+    `bpy.data.scenes.get(name)` で安全に解決するよう変更
+  - Camera が削除された / 型不正 の場合は当該アイテムを skip して次に進む
+  - `_force_clear_state()` を追加し、Scene 不在等の異常系でも `_render_active` /
+    handler / `set_rendering(False)` を確実に解除
+  - `_finalize` が None scene でも復元を試み、handler / dispatcher render
+    モードの解除を確実に行うように
+
+### Added
+- **「指定カットのみ書き出す」を柔軟化**:
+  - `kinema.render_cuts` に `scope` プロパティを追加:
+    - `ENABLED` (デフォルト): enabled=ON の Cut すべて
+    - `ACTIVE`: Active Cut 1 個だけ（enabled 無視）
+    - `RANGE`: Cut 番号で M..N を指定（1-based）
+  - `kinema.render_active_cut`: Active Cut だけを単発レンダーする専用 Operator
+  - Cuts セクションの Render ボタンを 3 つに分離（Active / Enabled / Range...）
+  - `_build_cut_queue_items()` 共通ヘルパで queue items 生成を統合
+
 ### Performance
 - **レンダー中の per-frame overhead を半減**:
   - `instance_dispatcher.set_rendering()` を追加。`render_init` で True、

@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 
 import bpy
-from bpy.props import IntProperty, StringProperty
+from bpy.props import BoolProperty, IntProperty, StringProperty
 
 from ..utils import refs
 from ._base import KinemaOperator
@@ -324,60 +324,186 @@ class KINEMA_OT_jump_to_cut(KinemaOperator):
 # Render Cuts （render_ops の非同期キューを再利用）
 # ---------------------------------------------------------------------------
 
-class KINEMA_OT_render_cuts(KinemaOperator):
-    """enabled な Cut を順に <base>/<cut_name>/ にキューでレンダー。
+def _build_cut_queue_items(scene, cuts) -> tuple[list, int]:
+    """Cut のリストを render queue items に変換する。
 
-    各 Cut の frame_start / frame_end / camera は Cut 設定 + Marker から解決して
-    一時的に scene にセット → 非同期キュー（render_ops）にバトンタッチ。
+    戻り値: (items, skipped)
+    """
+    from ..ops import render_ops as _ro
+    st = scene.kinema
+    sorted_ms = _sorted_markers(scene)
+    base_dir = _ro._normalize_dir(scene.render.filepath)
+    items: list = []
+    skipped = 0
+    for cut in cuts:
+        if cut.orphan and not cut.frame_override:
+            # orphan + frame_override 無し → 範囲が不明なので skip
+            skipped += 1
+            continue
+        if not cut.instance_name:
+            skipped += 1
+            continue
+        inst = next((i for i in st.instances if i.name == cut.instance_name), None)
+        if inst is None:
+            skipped += 1
+            continue
+        cam = refs.safe_object(inst.camera_ref)
+        if not refs.is_camera_object(cam):
+            skipped += 1
+            continue
+        fs, fe = _resolve_cut_frame_range(scene, cut, sorted_ms)
+        sub = base_dir + cut.name + os.sep
+        items.append((sub, cam, cut.name, fs, fe))
+    return items, skipped
+
+
+def _draw_cut_summary(layout, scene, targets, title: str) -> None:
+    """Render ダイアログの共通サマリ描画。"""
+    from ..ops import render_ops as _ro
+    sorted_ms = _sorted_markers(scene)
+    layout.label(text=title, icon="RENDER_ANIMATION")
+    layout.separator()
+    if _ro.is_queue_active():
+        layout.label(text="既にレンダリングキューが実行中です", icon="ERROR")
+        return
+    if not targets:
+        layout.label(text="対象 Cut がありません", icon="ERROR")
+        return
+
+    ext = _ro._resolve_extension(scene) or "(none)"
+    fmt, _is_movie = _ro._resolve_format_label(scene)
+    base_dir = _ro._normalize_dir(bpy.path.abspath(scene.render.filepath))
+
+    box = layout.box()
+    box.label(text="出力設定", icon="OUTPUT")
+    box.label(text=f"Base: {scene.render.filepath}")
+    box.label(text=f"Format: {fmt}   Extension: {ext}")
+
+    layout.separator()
+    layout.label(text=f"対象 {len(targets)} Cuts:")
+    col = layout.column(align=True)
+    col.scale_y = 0.85
+    for cut in targets[:12]:
+        fs, fe = _resolve_cut_frame_range(scene, cut, sorted_ms)
+        inst_label = cut.instance_name or "(no instance)"
+        sub = base_dir + cut.name + os.sep
+        col.label(
+            text=f"  🎬 {cut.name}  F{fs}-{fe}  →  {inst_label}  ({sub})",
+        )
+    if len(targets) > 12:
+        col.label(text=f"  ... and {len(targets) - 12} more")
+
+
+class KINEMA_OT_render_cuts(KinemaOperator):
+    """Cut を非同期キューで順次レンダー。
+
+    `scope` で対象を選択:
+      - ENABLED : enabled な Cut すべて（デフォルト）
+      - ACTIVE  : Active Cut 1 個だけ
+      - RANGE   : Cut の番号で M..N を指定
     """
     bl_idname = "kinema.render_cuts"
     bl_label = "Render Cuts"
     bl_description = (
-        "enabled が ON の Cut を順に <base>/<cut_name>/ サブフォルダに "
-        "非同期キューでバッチレンダー"
+        "Cut を <base>/<cut_name>/ サブフォルダに非同期キューでバッチレンダー。"
+        "対象は enabled / active / range から選択"
     )
 
+    scope: bpy.props.EnumProperty(
+        name="Scope",
+        items=(
+            ("ENABLED", "Enabled Cuts", "enabled=ON な Cut をすべて"),
+            ("ACTIVE", "Active Cut Only", "Active Cut だけ（enabled 無視）"),
+            ("RANGE", "Index Range", "Cut の番号で M..N を指定"),
+        ),
+        default="ENABLED",
+    )
+    range_start: IntProperty(name="Start Index", default=1, min=1)
+    range_end: IntProperty(name="End Index", default=10, min=1)
+
     def invoke(self, context, event):  # noqa: ARG002
-        return context.window_manager.invoke_props_dialog(self, width=600)
+        return context.window_manager.invoke_props_dialog(self, width=620)
+
+    def _resolve_targets(self, scene):
+        st = scene.kinema
+        cuts = list(st.cuts)
+        if self.scope == "ACTIVE":
+            idx = st.active_cut_index
+            if 0 <= idx < len(cuts):
+                return [cuts[idx]]
+            return []
+        if self.scope == "RANGE":
+            # 1-based 入力を 0-based に変換、clamp
+            s = max(1, int(self.range_start)) - 1
+            e = min(len(cuts), int(self.range_end))
+            if s >= e:
+                return []
+            return cuts[s:e]
+        # ENABLED（デフォルト）
+        return [c for c in cuts if c.enabled and not c.orphan]
 
     def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "scope", text="対象")
+        if self.scope == "RANGE":
+            row = layout.row(align=True)
+            row.prop(self, "range_start")
+            row.prop(self, "range_end")
+        layout.separator()
+        scene = context.scene
+        targets = self._resolve_targets(scene)
+        _draw_cut_summary(layout, scene, targets, "Render Cuts")
+
+    def run(self, context):
         from ..ops import render_ops as _ro
         scene = context.scene
-        st = scene.kinema
-        sorted_ms = _sorted_markers(scene)
-        targets = [c for c in st.cuts if c.enabled and not c.orphan]
-        layout = self.layout
-        layout.label(text="Render Cuts", icon="RENDER_ANIMATION")
-        layout.separator()
+
         if _ro.is_queue_active():
-            layout.label(text="既にレンダリングキューが実行中です", icon="ERROR")
-            return
+            self.report({"WARNING"}, "既にレンダリングキューが実行中です")
+            return {"CANCELLED"}
+
+        targets = self._resolve_targets(scene)
         if not targets:
-            layout.label(text="enabled かつ orphan でない Cut がありません", icon="ERROR")
-            return
+            self.report({"WARNING"}, "対象 Cut がありません")
+            return {"CANCELLED"}
 
-        ext = _ro._resolve_extension(scene) or "(none)"
-        fmt, _is_movie = _ro._resolve_format_label(scene)
-        base_dir = _ro._normalize_dir(bpy.path.abspath(scene.render.filepath))
+        items, skipped = _build_cut_queue_items(scene, targets)
+        if not items:
+            self.report({"WARNING"}, "Render 可能な Cut がありません（Instance 未紐付？）")
+            return {"CANCELLED"}
 
-        box = layout.box()
-        box.label(text="出力設定", icon="OUTPUT")
-        box.label(text=f"Base: {scene.render.filepath}")
-        box.label(text=f"Format: {fmt}   Extension: {ext}")
-
-        layout.separator()
-        layout.label(text=f"対象 {len(targets)} Cuts:")
-        col = layout.column(align=True)
-        col.scale_y = 0.85
-        for cut in targets[:12]:
-            fs, fe = _resolve_cut_frame_range(scene, cut, sorted_ms)
-            inst_label = cut.instance_name or "(no instance)"
-            sub = base_dir + cut.name + os.sep
-            col.label(
-                text=f"  🎬 {cut.name}  F{fs}-{fe}  →  {inst_label}  ({sub})",
+        if _ro.kickoff_queue_with_ranges(scene, items):
+            self.report(
+                {"INFO"},
+                f"Queued {len(items)} cuts ({self.scope})"
+                + (f", {skipped} skipped" if skipped else ""),
             )
-        if len(targets) > 12:
-            col.label(text=f"  ... and {len(targets) - 12} more")
+            return {"FINISHED"}
+        self.report({"ERROR"}, "キューの起動に失敗")
+        return {"CANCELLED"}
+
+
+class KINEMA_OT_render_active_cut(KinemaOperator):
+    """Active Cut 1 個だけを即座にレンダー（確認ダイアログを出す）。
+
+    `kinema.render_cuts` で scope=ACTIVE と同等だが、ワンクリック起動できる
+    ように専用 Operator として用意。
+    """
+    bl_idname = "kinema.render_active_cut"
+    bl_label = "Render Active Cut"
+    bl_description = "Active Cut だけを <base>/<cut_name>/ にレンダー（単発）"
+
+    def invoke(self, context, event):  # noqa: ARG002
+        return context.window_manager.invoke_props_dialog(self, width=520)
+
+    def draw(self, context):
+        scene = context.scene
+        st = scene.kinema
+        idx = st.active_cut_index
+        if not (0 <= idx < len(st.cuts)):
+            self.layout.label(text="Cut が選択されていません", icon="ERROR")
+            return
+        _draw_cut_summary(self.layout, scene, [st.cuts[idx]], "Render Active Cut")
 
     def run(self, context):
         from ..ops import render_ops as _ro
@@ -388,41 +514,18 @@ class KINEMA_OT_render_cuts(KinemaOperator):
             self.report({"WARNING"}, "既にレンダリングキューが実行中です")
             return {"CANCELLED"}
 
-        targets = [c for c in st.cuts if c.enabled and not c.orphan]
-        if not targets:
-            self.report({"WARNING"}, "enabled かつ orphan でない Cut がありません")
+        idx = st.active_cut_index
+        if not (0 <= idx < len(st.cuts)):
+            self.report({"WARNING"}, "Cut が選択されていません")
             return {"CANCELLED"}
 
-        sorted_ms = _sorted_markers(scene)
-        base_dir = _ro._normalize_dir(scene.render.filepath)
-        items: list = []
-        skipped = 0
-        for cut in targets:
-            if not cut.instance_name:
-                skipped += 1
-                continue
-            inst = next((i for i in st.instances if i.name == cut.instance_name), None)
-            if inst is None:
-                skipped += 1
-                continue
-            cam = refs.safe_object(inst.camera_ref)
-            if not refs.is_camera_object(cam):
-                skipped += 1
-                continue
-            fs, fe = _resolve_cut_frame_range(scene, cut, sorted_ms)
-            sub = base_dir + cut.name + os.sep
-            items.append((sub, cam, cut.name, fs, fe))
-
+        items, skipped = _build_cut_queue_items(scene, [st.cuts[idx]])
         if not items:
-            self.report({"WARNING"}, "Render 可能な Cut がありません（Instance 未紐付？）")
+            self.report({"WARNING"}, "Render 不可（Instance 未紐付 or orphan）")
             return {"CANCELLED"}
 
         if _ro.kickoff_queue_with_ranges(scene, items):
-            self.report(
-                {"INFO"},
-                f"Queued {len(items)} cuts"
-                + (f" ({skipped} skipped)" if skipped else ""),
-            )
+            self.report({"INFO"}, f"Queued: {st.cuts[idx].name}")
             return {"FINISHED"}
         self.report({"ERROR"}, "キューの起動に失敗")
         return {"CANCELLED"}

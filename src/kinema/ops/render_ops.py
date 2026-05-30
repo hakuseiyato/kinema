@@ -32,12 +32,15 @@ from ._base import KinemaOperator
 # キュー状態（モジュールレベル）
 # ---------------------------------------------------------------------------
 
-# キュー要素: (subfolder_path, camera_obj, label)
+# キュー要素: (subfolder_path, camera_obj, label[, frame_start, frame_end])
 _render_queue: list = []
 # 元の設定を保存（キュー終了時に復元）
 _render_saved: dict = {}
 # 現在キュー実行中フラグ
 _render_active: bool = False
+# キュー対象 Scene 名（timer 内で bpy.context.scene を使うとクラッシュリスクが
+# 高いので、名前で保持して bpy.data.scenes.get() で解決する）
+_render_scene_name: str = ""
 
 
 def _normalize_dir(path: str) -> str:
@@ -163,20 +166,25 @@ def _on_render_cancel(scene):
 
 def _finalize(scene, reason: str) -> None:
     """キュー終了処理。"""
-    global _render_active
-    try:
-        if "filepath" in _render_saved:
-            scene.render.filepath = _render_saved["filepath"]
-        if "camera" in _render_saved:
-            scene.camera = _render_saved["camera"]
-        if "frame_start" in _render_saved:
-            scene.frame_start = _render_saved["frame_start"]
-        if "frame_end" in _render_saved:
-            scene.frame_end = _render_saved["frame_end"]
-    except Exception:
-        pass
+    global _render_active, _render_scene_name
+    # Scene が None のことがある（_force_clear_state 経由 / Scene 削除済み）
+    if scene is None:
+        scene = _resolve_queue_scene()
+    if scene is not None:
+        try:
+            if "filepath" in _render_saved:
+                scene.render.filepath = _render_saved["filepath"]
+            if "camera" in _render_saved:
+                scene.camera = _render_saved["camera"]
+            if "frame_start" in _render_saved:
+                scene.frame_start = _render_saved["frame_start"]
+            if "frame_end" in _render_saved:
+                scene.frame_end = _render_saved["frame_end"]
+        except Exception:
+            pass
     _render_saved.clear()
     _render_active = False
+    _render_scene_name = ""
     # handler を外す
     for hook_list, fn in (
         (bpy.app.handlers.render_complete, _on_render_complete),
@@ -187,7 +195,25 @@ def _finalize(scene, reason: str) -> None:
                 hook_list.remove(fn)
         except Exception:
             pass
+    # dispatcher の render モードも明示解除（取りこぼし防止）
+    try:
+        from ..runtime import instance_dispatcher as _id
+        _id.set_rendering(False)
+    except Exception:
+        pass
     print(f"[kinema:render] queue finalized ({reason})")
+
+
+def _resolve_queue_scene():
+    """キュー対象 Scene を名前で安全に解決する。
+
+    timer / handler context で `bpy.context.scene` を参照すると、context が
+    無効な瞬間に触れてクラッシュする可能性がある。`bpy.data.scenes.get()`
+    なら安全。Scene が消えていたら None を返す。
+    """
+    if not _render_scene_name:
+        return None
+    return bpy.data.scenes.get(_render_scene_name)
 
 
 def _start_next_render():
@@ -199,14 +225,33 @@ def _start_next_render():
     """
     if not _render_queue:
         return None
+    scene = _resolve_queue_scene()
+    if scene is None:
+        # Scene が消えた → キューを破棄して終了（context.scene へのフォールバック
+        # は危険なのでしない）
+        print("[kinema:render] target scene missing, aborting queue")
+        _render_queue.clear()
+        # finalize は scene が無いと一部復元できないが、フラグ解除だけ確実に
+        _force_clear_state()
+        return None
     item = _render_queue.pop(0)
-    if len(item) == 5:
-        sub_dir, camera, label, fs, fe = item
-    else:
-        sub_dir, camera, label = item
-        fs, fe = None, None
-    scene = bpy.context.scene
     try:
+        if len(item) == 5:
+            sub_dir, camera, label, fs, fe = item
+        else:
+            sub_dir, camera, label = item
+            fs, fe = None, None
+    except Exception as exc:
+        print(f"[kinema:render] malformed queue item: {exc}")
+        _force_clear_state()
+        return None
+    try:
+        # Camera が削除されていないか / Camera 型かを再確認
+        if camera is None or getattr(camera, "type", None) != "CAMERA":
+            print(f"[kinema:render] skipping '{label}': camera invalid")
+            # 次のキューを試す
+            bpy.app.timers.register(_start_next_render, first_interval=0.1)
+            return None
         scene.render.filepath = sub_dir
         scene.camera = camera
         if fs is not None and fe is not None:
@@ -221,6 +266,29 @@ def _start_next_render():
         # エラーで次が動かないと困るので強制完了扱い
         _finalize(scene, reason=f"error: {exc}")
     return None  # timer は一度きり
+
+
+def _force_clear_state() -> None:
+    """Scene 不在等の異常系で、状態だけは確実に解除する。"""
+    global _render_active, _render_scene_name
+    _render_active = False
+    _render_scene_name = ""
+    _render_saved.clear()
+    for hook_list, fn in (
+        (bpy.app.handlers.render_complete, _on_render_complete),
+        (bpy.app.handlers.render_cancel, _on_render_cancel),
+    ):
+        try:
+            if fn in hook_list:
+                hook_list.remove(fn)
+        except Exception:
+            pass
+    # dispatcher の render モードも解除しておく（取りこぼし防止）
+    try:
+        from ..runtime import instance_dispatcher as _id
+        _id.set_rendering(False)
+    except Exception:
+        pass
 
 
 def _register_handlers():
@@ -241,7 +309,7 @@ def _kickoff_queue(scene, queue_items: list) -> bool:
       - (sub_dir, camera, label, frame_start, frame_end)
     戻り値: 起動できたら True。
     """
-    global _render_active
+    global _render_active, _render_scene_name
     if _render_active:
         return False
     if not queue_items:
@@ -257,6 +325,7 @@ def _kickoff_queue(scene, queue_items: list) -> bool:
     _render_queue.extend(queue_items)
     _register_handlers()
     _render_active = True
+    _render_scene_name = scene.name  # timer 内では名前で解決する
 
     # 最初のレンダーを起動
     bpy.app.timers.register(_start_next_render, first_interval=0.1)
