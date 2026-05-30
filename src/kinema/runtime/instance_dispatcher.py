@@ -99,11 +99,16 @@ def _resolve_lookat_target(inst):
 def _apply_dof_focus(cam, params) -> None:
     """params.dof_focus_use_collection ON 時、cam.data.dof.focus_object に
     collection 解決結果を書き戻す。OFF 時は触らない（標準 UI 経由のユーザー指定を尊重）。
+
+    **render 中は PointerProperty 変更を行わない**。focus_object への代入は
+    depsgraph rebuild を起動して render thread と競合するため。
     """
     if not getattr(params, "dof_focus_use_collection", False):
         return
     if cam is None or cam.data is None or not hasattr(cam.data, "dof"):
         return
+    if _is_rendering:
+        return  # render 中の PointerProperty 変更禁止
     coll = getattr(params, "dof_focus_collection", None)
     resolved = target_resolve.resolve_visible_in_collection(coll)
     try:

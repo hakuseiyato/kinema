@@ -88,6 +88,112 @@ def _scan_dead_track_to_constraints() -> list[tuple[bpy.types.Object, "bpy.types
     return pairs
 
 
+def _scan_all_dead_constraints() -> list[tuple[bpy.types.Object, "bpy.types.Constraint", str]]:
+    """**全種類の制約**で target が dead (ReferenceError) なものを列挙。
+
+    kinema 起因とは限らないが、depsgraph crash の典型原因なので Repair 対象。
+    """
+    pairs: list = []
+    for obj in bpy.data.objects:
+        try:
+            cons = list(obj.constraints)
+        except Exception:
+            continue
+        for con in cons:
+            # target を持つ制約だけ検査（Limit Rotation 等は target 無し）
+            target = getattr(con, "target", None)
+            try:
+                # ReferenceError trigger or None check
+                if target is not None:
+                    _ = target.name  # 死活確認
+            except ReferenceError:
+                pairs.append((obj, con, f"{con.type}: dead target"))
+                continue
+            except Exception as exc:
+                pairs.append((obj, con, f"{con.type}: {exc}"))
+                continue
+    return pairs
+
+
+def _scan_dead_modifier_refs() -> list[tuple[bpy.types.Object, "bpy.types.Modifier", str]]:
+    """Modifier の Object / Collection 参照で dead なものを列挙。"""
+    pairs: list = []
+    for obj in bpy.data.objects:
+        try:
+            mods = list(obj.modifiers)
+        except Exception:
+            continue
+        for mod in mods:
+            # Modifier の代表的な ref 属性
+            for attr in ("object", "target", "mirror_object", "origin",
+                         "deform_target", "object_from", "object_to",
+                         "collection"):
+                if not hasattr(mod, attr):
+                    continue
+                try:
+                    ref = getattr(mod, attr)
+                except Exception:
+                    continue
+                if ref is None:
+                    continue
+                try:
+                    _ = ref.name
+                except ReferenceError:
+                    pairs.append((obj, mod, f"{mod.type}.{attr}: dead"))
+                except Exception:
+                    pass
+    return pairs
+
+
+def _scan_dead_drivers() -> list[tuple[str, str, str]]:
+    """全 ID の driver で dead variable target を列挙。
+
+    Returns: [(id_block_name, datapath, reason), ...]
+    """
+    found: list = []
+    for collection_attr in ("objects", "scenes", "cameras", "materials", "meshes"):
+        try:
+            data_iter = getattr(bpy.data, collection_attr)
+        except Exception:
+            continue
+        for id_block in data_iter:
+            try:
+                ad = id_block.animation_data
+            except Exception:
+                continue
+            if ad is None:
+                continue
+            try:
+                drivers = list(ad.drivers)
+            except Exception:
+                continue
+            for fc in drivers:
+                try:
+                    drv = fc.driver
+                except Exception:
+                    continue
+                for var in drv.variables:
+                    for tgt in var.targets:
+                        try:
+                            obj_ref = tgt.id
+                        except ReferenceError:
+                            found.append((id_block.name, fc.data_path,
+                                          f"driver var '{var.name}' dead id"))
+                            continue
+                        except Exception:
+                            continue
+                        if obj_ref is None:
+                            continue
+                        try:
+                            _ = obj_ref.name
+                        except ReferenceError:
+                            found.append((id_block.name, fc.data_path,
+                                          f"driver var '{var.name}' dead id"))
+                        except Exception:
+                            pass
+    return found
+
+
 def _scan_dead_instance_refs(scene) -> list[tuple[int, str, str]]:
     """Instance のうち camera_ref / collection_ref が両方とも dead な行を列挙。
 
@@ -136,6 +242,19 @@ class KINEMA_OT_repair_scene(KinemaOperator):
         description="camera と collection が両方 dead な Instance 行を削除",
         default=False,
     )
+    remove_all_dead_constraints: bpy.props.BoolProperty(
+        name="Remove ALL Dead Constraints (any type)",
+        description=(
+            "kinema 起因以外も含めて、全種類の制約のうち target が dead な"
+            "ものをスキャンして削除。depsgraph crash の典型原因対策"
+        ),
+        default=False,
+    )
+    remove_dead_modifier_refs: bpy.props.BoolProperty(
+        name="Clear Dead Modifier References",
+        description="Modifier の Object/Collection 参照のうち dead なものを None に",
+        default=False,
+    )
     purge_orphan_data: bpy.props.BoolProperty(
         name="Purge Orphan Data",
         description="掃除後に Blender 標準の Purge Orphan Data を呼んで未使用 ID を片付け",
@@ -156,6 +275,10 @@ class KINEMA_OT_repair_scene(KinemaOperator):
             orphans = _scan_orphan_proxies() if self.remove_orphan_proxies else []
             dead_cons = _scan_dead_track_to_constraints() if self.remove_dead_constraints else []
             dead_inst = _scan_dead_instance_refs(scene) if self.remove_dead_instances else []
+            all_dead_cons = _scan_all_dead_constraints() if self.remove_all_dead_constraints else []
+            dead_mods = _scan_dead_modifier_refs() if self.remove_dead_modifier_refs else []
+            # Driver の dead は情報表示のみ（自動削除は副作用が大きすぎる）
+            dead_drv = _scan_dead_drivers()
 
             box = layout.box()
             box.label(text="検出結果", icon="VIEWZOOM")
@@ -193,11 +316,51 @@ class KINEMA_OT_repair_scene(KinemaOperator):
                 for i, name, reason in dead_inst[:8]:
                     col.label(text=f"  - #{i+1} {name} ({reason})")
 
+            # 拡張検査結果
+            if self.remove_all_dead_constraints:
+                box.label(
+                    text=f"ALL Dead Constraints: {len(all_dead_cons)} 件",
+                    icon="ERROR" if all_dead_cons else "CHECKMARK",
+                )
+                if all_dead_cons:
+                    col = box.column(align=True)
+                    col.scale_y = 0.85
+                    for owner, con, reason in all_dead_cons[:8]:
+                        col.label(text=f"  - {owner.name} / {reason}")
+            if self.remove_dead_modifier_refs:
+                box.label(
+                    text=f"Dead Modifier Refs: {len(dead_mods)} 件",
+                    icon="ERROR" if dead_mods else "CHECKMARK",
+                )
+                if dead_mods:
+                    col = box.column(align=True)
+                    col.scale_y = 0.85
+                    for owner, mod, reason in dead_mods[:8]:
+                        col.label(text=f"  - {owner.name} / {reason}")
+            # Driver は情報表示のみ
+            box.label(
+                text=f"Dead Drivers (info only): {len(dead_drv)} 件",
+                icon="INFO" if dead_drv else "CHECKMARK",
+            )
+            if dead_drv:
+                col = box.column(align=True)
+                col.scale_y = 0.85
+                for id_name, dp, reason in dead_drv[:5]:
+                    col.label(text=f"  - {id_name}.{dp}: {reason}")
+                col.label(
+                    text="※ Driver は自動削除しません。Outliner > Drivers Editor で手動削除推奨",
+                    icon="INFO",
+                )
+
             layout.separator()
             layout.label(text="削除対象:", icon="TRASH")
             layout.prop(self, "remove_orphan_proxies")
             layout.prop(self, "remove_dead_constraints")
             layout.prop(self, "remove_dead_instances")
+            layout.separator()
+            layout.label(text="拡張検査（kinema 起因以外も含む）:", icon="ZOOM_ALL")
+            layout.prop(self, "remove_all_dead_constraints")
+            layout.prop(self, "remove_dead_modifier_refs")
             layout.separator()
             layout.prop(self, "purge_orphan_data")
             layout.separator()
@@ -264,7 +427,35 @@ class KINEMA_OT_repair_scene(KinemaOperator):
                 st.active_instance_index = max(0, len(st.instances) - 1)
             report_lines.append(f"Removed {len(dead_inst)} dead instance entries")
 
-        # 4. Purge Orphan Data（Blender 標準）
+        # 4. ALL Dead Constraints
+        if self.remove_all_dead_constraints:
+            all_dead = _scan_all_dead_constraints()
+            removed = 0
+            for owner, con, _reason in all_dead:
+                try:
+                    owner.constraints.remove(con)
+                    removed += 1
+                except Exception as exc:
+                    print(f"[kinema:repair] failed to remove constraint on {owner.name}: {exc}")
+            report_lines.append(f"Removed {removed} all-type dead constraints")
+            total_removed += removed
+
+        # 5. Dead Modifier Refs（参照を None に）
+        if self.remove_dead_modifier_refs:
+            dead_mods = _scan_dead_modifier_refs()
+            cleared = 0
+            for owner, mod, reason in dead_mods:
+                # reason は "Type.attr: dead" 形式。attr を抽出
+                try:
+                    attr_part = reason.split(".", 1)[1].split(":", 1)[0]
+                    setattr(mod, attr_part, None)
+                    cleared += 1
+                except Exception as exc:
+                    print(f"[kinema:repair] failed to clear modifier ref: {exc}")
+            report_lines.append(f"Cleared {cleared} dead modifier refs")
+            total_removed += cleared
+
+        # 6. Purge Orphan Data（Blender 標準）
         if self.purge_orphan_data:
             try:
                 bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True,
