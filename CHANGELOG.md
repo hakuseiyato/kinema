@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Performance
+- **レンダー中の per-frame overhead を半減**:
+  - `instance_dispatcher.set_rendering()` を追加。`render_init` で True、
+    `render_complete` / `render_cancel` で False
+  - render 中の `depsgraph_update_post` 経由の dispatch を **全 skip**
+    （mesh deform / material eval 毎に発火していた dispatch を抑止）。
+    frame_change_post の dispatch だけで render に必要な kinema 計算は完結
+  - render 中の `_apply_preview_preset` を **skip**（プレビュー用なので
+    render 時は不要。全 Preset 走査のコストを丸ごと削減）
+  - render 中の snap-once 要求も無視（ターゲット変更スナップは編集時のみ
+    意味がある + render 中の連続性を壊さない）
+
 ### Added
 - **Cut（カット）データモデル + 関連 Operator 群**:
   - Timeline Marker と紐付くカット情報を `scene.kinema.cuts` (CollectionProperty)

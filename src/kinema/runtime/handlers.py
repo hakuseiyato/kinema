@@ -43,7 +43,37 @@ def kinema_frame_change_post(scene, depsgraph):  # noqa: ARG001
 def kinema_depsgraph_update_post(scene, depsgraph):  # noqa: ARG001
     if instance_dispatcher._in_dispatch:
         return
+    # render 中は frame_change_post だけで十分。depsgraph は mesh deform /
+    # material eval 等で連発するので、render 中は全 skip して overhead 削減。
+    if instance_dispatcher.is_rendering():
+        return
     instance_dispatcher.dispatch(scene)
+
+
+@persistent
+def kinema_render_init(scene):  # noqa: ARG001
+    """レンダージョブ開始時（animation render なら 1 回だけ）。
+
+    dispatcher を render モードに切替え、depsgraph_update_post の dispatch
+    を skip + _apply_preview_preset を skip して per-frame overhead を削減。
+    `render_pre/post` はフレームごとに発火するので使わない。
+    """
+    instance_dispatcher.set_rendering(True)
+
+
+@persistent
+def kinema_render_complete(scene):  # noqa: ARG001
+    """レンダージョブ完了時。render モード解除。"""
+    instance_dispatcher.set_rendering(False)
+
+
+@persistent
+def kinema_render_cancel_clear(scene):  # noqa: ARG001
+    """Esc 等でキャンセルされた場合も render モードを解除する。
+
+    関数名が render_ops 側の _on_render_cancel と被らないように _clear を付与。
+    """
+    instance_dispatcher.set_rendering(False)
 
 
 @persistent
@@ -98,6 +128,9 @@ _HOOKS = (
     ("frame_change_post", kinema_frame_change_post),
     ("depsgraph_update_post", kinema_depsgraph_update_post),
     ("load_post", kinema_load_post),
+    ("render_init", kinema_render_init),
+    ("render_complete", kinema_render_complete),
+    ("render_cancel", kinema_render_cancel_clear),
 )
 
 

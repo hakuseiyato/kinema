@@ -22,6 +22,24 @@ _in_dispatch = False
 # ための明示フラグ。書込終了後 1 度だけ dispatch するパターンで使う。
 _dispatch_suspended = False
 
+# レンダー中フラグ（render_pre/post handler で切替）。
+# True の間は:
+#   - depsgraph_update_post 経由の dispatch を全 skip（frame_change_post で十分）
+#   - _apply_preview_preset を skip（render 中はエディタプレビュー不要）
+# これで render 中の per-frame overhead をほぼ半減させる。
+_is_rendering = False
+
+
+def set_rendering(active: bool) -> None:
+    """render_pre / render_post から呼ぶ。"""
+    global _is_rendering
+    _is_rendering = active
+
+
+def is_rendering() -> bool:
+    return _is_rendering
+
+
 # バースト抑制用: 直近の dispatch 時刻
 _last_dispatch_time: dict[str, float] = {}
 
@@ -260,7 +278,11 @@ def dispatch(scene, force: bool = False) -> None:
     if not hasattr(scene, "kinema"):
         return
 
-    snap_now = _force_snap_once
+    # render 中の snap は damped follow の連続性を壊すので無視する。
+    # snap 要求自体はクリアして、render 後の操作に影響しないようにする。
+    snap_now = _force_snap_once and not _is_rendering
+    if _force_snap_once and _is_rendering:
+        _force_snap_once = False
     if snap_now:
         # ターゲット変更直後の追従漏れ防止: damping を 1 回だけ無視させる。
         # damping.compute_dt() は cache 不在 = 初回呼出として 0 を返すため、
@@ -280,8 +302,9 @@ def dispatch(scene, force: bool = False) -> None:
     try:
         _apply_instances(scene)
         # Active Preset の Camera が scene.camera のとき、Preset 設定で
-        # ライブプレビュー適用（Load 前のテスト用）
-        _apply_preview_preset(scene)
+        # ライブプレビュー適用（Load 前のテスト用）。render 中はスキップ。
+        if not _is_rendering:
+            _apply_preview_preset(scene)
     finally:
         _in_dispatch = False
         if snap_now:
