@@ -4,6 +4,30 @@
 
 ## [Unreleased]
 
+### Fixed: render 中の scene mutation 起因クラッシュ（**核心バグ**）
+- **`cleanup_lookat_proxy` が render 中の `frame_change_post` から呼ばれて
+  `collection.objects.unlink()` / `objects.remove()` を実行 → depsgraph
+  rebuild が起動して render thread と競合 → NULL deref クラッシュ** の原因
+  を特定
+  - Python backtrace で確定:
+    ```
+    follow_lookat.py:216 cleanup_lookat_proxy
+      ↓ instance_dispatcher.py:240 _apply_instances
+      ↓ instance_dispatcher.py:286 dispatch
+      ↓ handlers.py:33 kinema_frame_change_post
+    ```
+  - C stack: `collection_object_remove → BKE_collection_object_cache_free
+    → DEG_id_tag_update_ex → CRASH`
+- **修正**: 以下の scene mutation 系関数を **render 中は no-op** に:
+  - `_ensure_lookat_proxy`: render 中は新規 Proxy 作成しない（既存を返すのみ、
+    無ければ None）
+  - `_remove_track_to_constraints`: render 中は constraint 撤去しない
+  - `cleanup_lookat_proxy`: render 中は unlink/remove しない
+- **`update_lookat_with_target`** が proxy=None を受けても落ちないよう改修:
+  - proxy 無し時は damping 無しで直接 target を見る fallback
+- `instance_dispatcher._apply_instances` の `cleanup_lookat_proxy` 呼出も
+  render 中 skip ガードを追加（二重防御）
+
 ### Fixed: 「Render 押すと画面が白くなって始まらない」を解消
 - **モーダル Operator 方式に再設計**:
   - 旧: timer から同期 `bpy.ops.render.render(animation=True)` を呼んでいた

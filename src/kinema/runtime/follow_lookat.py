@@ -112,24 +112,40 @@ def update_follow(cam_obj, params, dt: float, target_override=None) -> None:
 # LookAt
 # ---------------------------------------------------------------------------
 
-def _ensure_lookat_proxy(cam_obj, target) -> bpy.types.Object:
+def _is_rendering_safe() -> bool:
+    """instance_dispatcher.is_rendering() を循環 import 回避で安全に問い合わせる。"""
+    try:
+        from . import instance_dispatcher as _id  # noqa: PLC0415
+        return _id.is_rendering()
+    except Exception:
+        return False
+
+
+def _ensure_lookat_proxy(cam_obj, target):
     """LookAt 用の中継 Empty を取得 or 作成。
 
     Proxy は target 位置を damping で滑らかに追跡する。カメラの回転は自前
     計算でこの Proxy を見るようにする（Track To 制約は使わない → Roll 自由）。
+
+    **render 中は新規 Proxy 作成を行わない**（scene 構造変更が render thread と
+    競合して Blender がクラッシュするため）。既存 Proxy だけ返す。無ければ None。
     """
     proxy_name = cam_obj.name + C.KN_LOOKAT_PROXY_SUFFIX
     proxy = bpy.data.objects.get(proxy_name)
-    if proxy is None:
-        proxy = bpy.data.objects.new(proxy_name, None)
-        proxy.empty_display_type = "PLAIN_AXES"
-        proxy.empty_display_size = 0.2
-        for coll in cam_obj.users_collection:
-            coll.objects.link(proxy)
-            break
-        else:
-            bpy.context.scene.collection.objects.link(proxy)
-        proxy.location = target.matrix_world.translation
+    if proxy is not None:
+        return proxy
+    # render 中は scene mutation 禁止
+    if _is_rendering_safe():
+        return None
+    proxy = bpy.data.objects.new(proxy_name, None)
+    proxy.empty_display_type = "PLAIN_AXES"
+    proxy.empty_display_size = 0.2
+    for coll in cam_obj.users_collection:
+        coll.objects.link(proxy)
+        break
+    else:
+        bpy.context.scene.collection.objects.link(proxy)
+    proxy.location = target.matrix_world.translation
     return proxy
 
 
@@ -139,9 +155,14 @@ def _remove_track_to_constraints(cam_obj) -> None:
     旧 cineflow / 旧 kinema 実装は Track To 制約を使っていたが、Y 軸 Roll が
     効かないため自前 LookAt に切替えた。既存 .blend で残っている Track To が
     あれば取り除く（target が KnLookatProxy のものだけを安全に削除）。
+
+    **render 中は constraint 撤去を行わない**（depsgraph rebuild が render
+    thread と競合するため）。
     """
     if cam_obj is None:
         return
+    if _is_rendering_safe():
+        return  # render 中の constraint 削除は危険
     for con in list(cam_obj.constraints):
         if con.type != "TRACK_TO":
             continue
@@ -177,16 +198,22 @@ def update_lookat_with_target(
     # 旧 Track To 制約があれば撤去（自前 LookAt と衝突するため）
     _remove_track_to_constraints(cam_obj)
 
-    # Proxy 位置を damping で smoothing
-    alpha = damping_alpha(damping, dt)
+    # Proxy が無いケース（render 中で新規作成を禁止された場合）→
+    # damping 無しの直接 lookat で代替
     target_pos = target.matrix_world.translation
-    if alpha >= 0.999:
-        proxy.location = target_pos
+    if proxy is None:
+        proxy_pos = target_pos
     else:
-        proxy.location = Vector(proxy.location).lerp(target_pos, alpha)
+        # Proxy 位置を damping で smoothing
+        alpha = damping_alpha(damping, dt)
+        if alpha >= 0.999:
+            proxy.location = target_pos
+        else:
+            proxy.location = Vector(proxy.location).lerp(target_pos, alpha)
+        proxy_pos = proxy.matrix_world.translation
 
-    # 自前 LookAt: cam の rotation を Proxy 方向に向ける
-    direction = proxy.matrix_world.translation - cam_obj.matrix_world.translation
+    # 自前 LookAt: cam の rotation を Proxy 方向（または直接 target）に向ける
+    direction = proxy_pos - cam_obj.matrix_world.translation
     if direction.length < 1e-6:
         return  # 同一位置 → 回転を変えない
 
@@ -203,9 +230,16 @@ def update_lookat_with_target(
 
 
 def cleanup_lookat_proxy(cam_obj) -> None:
-    """LookAt Proxy を削除（lookat_target=None / unload 時）。"""
+    """LookAt Proxy を削除（lookat_target=None / unload 時）。
+
+    **render 中は呼ばない**。collection.objects.unlink() / objects.remove() が
+    depsgraph rebuild を起動して render thread と競合する（過去事例:
+    BKE_collection_object_cache_free → DEG_id_tag_update_ex で NULL deref）。
+    """
     if cam_obj is None:
         return
+    if _is_rendering_safe():
+        return  # render 中は scene 構造変更禁止
     proxy_name = cam_obj.name + C.KN_LOOKAT_PROXY_SUFFIX
     proxy = bpy.data.objects.get(proxy_name)
     if proxy is None:

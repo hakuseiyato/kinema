@@ -237,7 +237,13 @@ def _apply_instances(scene) -> None:
             )
         else:
             # 何も注視するものがない → 既存の Proxy を掃除
-            follow_lookat.cleanup_lookat_proxy(cam)
+            # **重要**: render 中は cleanup_lookat_proxy を呼ばない。
+            # cleanup_lookat_proxy は collection.objects.unlink() / objects.remove() を
+            # 行うため、render thread の最中にこれを呼ぶと depsgraph rebuild が
+            # トリガされて C スタックでクラッシュする
+            # (BKE_collection_object_cache_free → DEG_id_tag_update_ex で NULL deref)
+            if not _is_rendering:
+                follow_lookat.cleanup_lookat_proxy(cam)
             # LookAt 無し時の Roll: rotation_euler に直接書く
             if abs(roll_deg) > 0.001:
                 try:
