@@ -164,5 +164,5 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
     cuts_collapsed: BoolProperty(
         name="Cuts Collapsed",
         description="Cuts セクションを折り畳む",
-        default=True,
+        default=False,
     )

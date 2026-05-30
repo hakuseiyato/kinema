@@ -18,11 +18,7 @@ from . import target_resolve
 # 再帰防止フラグ
 _in_dispatch = False
 
-# Duplicate Operator など、複数プロパティを連続書込中に dispatch を全停止する
-# ための明示フラグ。書込終了後 1 度だけ dispatch するパターンで使う。
-_dispatch_suspended = False
-
-# レンダー中フラグ（render_pre/post handler で切替）。
+# レンダー中フラグ（render_init/complete handler で切替）。
 # True の間は:
 #   - depsgraph_update_post 経由の dispatch を全 skip（frame_change_post で十分）
 #   - _apply_preview_preset を skip（render 中はエディタプレビュー不要）
@@ -58,17 +54,6 @@ def request_snap_once() -> None:
     global _force_snap_once
     _force_snap_once = True
 
-
-def suspend_dispatch():
-    """`with` ブロック相当: dispatch を抑止する（バッチ書込開始時に呼ぶ）。"""
-    global _dispatch_suspended
-    _dispatch_suspended = True
-
-
-def resume_dispatch():
-    """dispatch 抑止を解除する。"""
-    global _dispatch_suspended
-    _dispatch_suspended = False
 
 # バースト抑制閾値（秒）。240Hz 上限。
 _BURST_MIN_INTERVAL = 1.0 / 240.0
@@ -264,7 +249,7 @@ def _apply_instances(scene) -> None:
 
 
 def dispatch(scene, force: bool = False) -> None:
-    """frame_change_pre / depsgraph_update_post / update callback のエントリ。
+    """frame_change_post / depsgraph_update_post / update callback のエントリ。
 
     force=False 時はバースト抑制（240Hz 上限）を効かせる。
     `request_snap_once()` 直後の呼び出しは burst を無視して必ず処理し、
@@ -273,8 +258,6 @@ def dispatch(scene, force: bool = False) -> None:
     global _in_dispatch, _force_snap_once
     if _in_dispatch:
         return
-    if _dispatch_suspended:
-        return  # Duplicate などのバッチ書込中
     if not hasattr(scene, "kinema"):
         return
 

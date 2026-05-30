@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+### Removed (clean-up)
+- **`KINEMA_OT_duplicate_instance` の死骸コードを完全削除**:
+  - beta2.x で登録は外していたが、クラス定義と関連 import が残っていた
+  - `kn_collections` import / `naming.next_serial_from` 呼出箇所も整理
+- **`suspend_dispatch` / `resume_dispatch` / `_dispatch_suspended` を削除**:
+  - Duplicate Operator 専用の dispatch 抑止フラグだったが、Duplicate 自体が
+    無くなったので不要
+- **`KINEMA_PT_main` の旧 frame_change_pre 参照を全て post に統一**:
+  - `diagnostics_ops._KINEMA_HANDLER_NAMES` に新 handler 名（post / render_init /
+    render_complete / render_cancel_clear）を追加。旧 `kinema_frame_change_pre`
+    は残骸検出用に残す
+  - `diagnostics_ops` の handler 数チェックループに新 hook を追加
+  - `handler_ops.toggle_handlers` の present 判定を post 名に更新
+
+### Changed
+- **Cuts セクションのデフォルトを展開状態に**（`cuts_collapsed=False`）。
+  新機能なので初回は見えるように
+
+### Added (tests)
+- `tests/test_json_io.py`: Cut のシリアライズ往復テスト、cuts 無し旧スキーマ
+  互換テストを追加
+
 ### Fixed (crash hardening)
 - **レンダーキューの timer 内 `bpy.context.scene` 参照を撤去**:
   - timer 内で `bpy.context.scene` を参照するのはクラッシュの典型パターン

@@ -1,136 +1,18 @@
-"""Instance 系 Operator。"""
+"""Instance 系 Operator。
+
+注: `KINEMA_OT_duplicate_instance` は beta2.x で廃止された（複数欲しい場合は
+Preset を複数回 Load する運用に変更）。Preset 側に事前設定 (KinemaCameraPreset)
+が持てるようになったため。
+"""
 
 from __future__ import annotations
 
 import bpy
 from bpy.props import IntProperty, FloatProperty  # noqa: F401
 
-from ..utils import collections as kn_collections
 from ..utils import refs
 from ..runtime import follow_lookat
 from ._base import KinemaOperator
-
-
-class KINEMA_OT_duplicate_instance(KinemaOperator):
-    """選択中の Instance を複製する。
-
-    新ルール:
-      - 名前: ベース名 + _NNN の連番採番 (`next_serial_from`)
-        Hero → Hero_001、Hero_001 → Hero_002（suffix 増殖しない）
-      - 名前同期: Collection / Camera も新名前にリネーム
-      - Lock / Solo: 複製先は両方 False にリセット（即編集可能）
-      - source_preset: `copy of <元 Instance 名>` で複製元を明示
-      - dispatcher は複製中 suspend し、終了後に 1 度だけ呼ぶ
-        （中間状態で Follow 計算が走って変な位置に飛ぶのを防止）
-    """
-    bl_idname = "kinema.duplicate_instance"
-    bl_label = "Duplicate Instance"
-    bl_description = "選択中の Instance を関連オブジェクトごと複製 (連番採番)"
-
-    index: IntProperty(default=-1)
-
-    def run(self, context):
-        from ..runtime import instance_dispatcher  # noqa: PLC0415
-        from ..utils import naming  # noqa: PLC0415
-
-        scene = context.scene
-        st = scene.kinema
-        idx = self.index if self.index >= 0 else st.active_instance_index
-        if idx < 0 or idx >= len(st.instances):
-            self.report({"WARNING"}, "Instance が選択されていません")
-            return {"CANCELLED"}
-
-        src = st.instances[idx]
-        src_cam = refs.safe_object(src.camera_ref)
-        if not refs.is_camera_object(src_cam):
-            self.report({"ERROR"}, "複製元 Camera が見つかりません")
-            return {"CANCELLED"}
-
-        src_coll = refs.safe_collection(src.collection_ref)
-        instances_root = kn_collections.get_or_create_instances_root(
-            scene, st.instances_root_name,
-        )
-
-        # 連番採番: 既存名から base + _NNN の次の番号を計算
-        src_name = src.name or (src_coll.name if src_coll else src_cam.name)
-        all_names = (
-            set(bpy.data.collections.keys())
-            | set(bpy.data.objects.keys())
-            | {i.name for i in st.instances}
-        )
-        new_name = naming.next_serial_from(src_name, all_names)
-
-        # dispatcher を suspend してバッチ書込
-        instance_dispatcher.suspend_dispatch()
-        try:
-            # Camera + 関連オブジェクトを複製
-            try:
-                new_coll, new_cam = kn_collections.duplicate_camera_as_instance(
-                    src_cam, instances_root,
-                    root_scope=src_coll,
-                    base_name=new_name,
-                )
-            except Exception as exc:
-                self.report({"ERROR"}, f"複製失敗: {exc}")
-                return {"CANCELLED"}
-
-            # 新規 collection / camera が衝突回避された場合は new_name を実名に
-            actual_name = new_coll.name
-
-            inst = st.instances.add()
-            # name を最後に設定（他フィールド設定中に _on_name_changed で
-            # 副作用が出るのを避ける）
-            inst.collection_ref = new_coll
-            inst.camera_ref = new_cam
-
-            # Lock / Solo は新ルールでリセット
-            inst.enabled = src.enabled
-            inst.solo = False
-            inst.locked = False
-
-            inst.lens_mm = src.lens_mm
-
-            # Follow / LookAt / Noise パラメータをコピー
-            inst.follow_target = src.follow_target
-            inst.follow_distance = src.follow_distance
-            inst.follow_rot_x = src.follow_rot_x
-            inst.follow_rot_y = src.follow_rot_y
-            inst.follow_rot_z = src.follow_rot_z
-            inst.follow_height = src.follow_height
-            inst.follow_side = src.follow_side
-            inst.follow_damping = src.follow_damping
-            inst.follow_auto_lookat = src.follow_auto_lookat
-            inst.use_damping = getattr(src, "use_damping", True)
-            inst.lookat_target = src.lookat_target
-            inst.lookat_damping = src.lookat_damping
-            inst.noise_enabled = src.noise_enabled
-            inst.noise_strength_pos = src.noise_strength_pos
-            inst.noise_strength_rot = src.noise_strength_rot
-            inst.noise_frequency = src.noise_frequency
-            inst.noise_seed = src.noise_seed
-
-            # 実カメラの lens も同期（data は data.copy() で独立済）
-            if new_cam.data is not None and src_cam.data is not None:
-                new_cam.data.lens = src_cam.data.lens
-
-            # source_preset: 複製元 Instance 名を表示
-            inst.source_preset = f"copy of {src.name}"
-
-            # 名前は最後（update callback で coll/cam を再リネーム）
-            inst.name = actual_name
-
-            st.active_instance_index = len(st.instances) - 1
-        finally:
-            instance_dispatcher.resume_dispatch()
-
-        # 終了後に 1 度だけ dispatch を呼んで正しい状態に
-        try:
-            instance_dispatcher.dispatch(scene, force=True)
-        except Exception:
-            pass
-
-        self.report({"INFO"}, f"Duplicated: {new_name}")
-        return {"FINISHED"}
 
 
 class KINEMA_OT_detach_follow(KinemaOperator):

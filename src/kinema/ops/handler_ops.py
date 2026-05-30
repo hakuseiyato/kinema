@@ -36,10 +36,11 @@ class KINEMA_OT_toggle_handlers(KinemaOperator):
     bl_description = "kinema の frame_change handler を有効/無効にする"
 
     def run(self, context):  # noqa: ARG002
-        # Blender の handler list に kinema_frame_change_pre が居るかで判定
+        # Blender の handler list に kinema_frame_change_post が居るかで判定
+        # (2026-05 で frame_change_pre → post に変更済み)
         present = any(
-            getattr(fn, "__name__", "") == "kinema_frame_change_pre"
-            for fn in bpy.app.handlers.frame_change_pre
+            getattr(fn, "__name__", "") == "kinema_frame_change_post"
+            for fn in bpy.app.handlers.frame_change_post
         )
         if present:
             handlers.unregister_all()

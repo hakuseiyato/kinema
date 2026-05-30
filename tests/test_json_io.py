@@ -34,6 +34,7 @@ class FakeInstance:
             "follow_damping": 0.3,
             "follow_auto_lookat": True,
             "lookat_damping": 0.3,
+            "use_damping": True,
             "noise_enabled": False,
             "noise_strength_pos": 0.05,
             "noise_strength_rot": 0.5,
@@ -118,6 +119,90 @@ def test_serialize_scene_structure():
     assert len(data["instances"]) == 2
     assert data["instances"][0]["name"] == "A"
     assert data["instances"][1]["name"] == "B"
+
+
+# --- Cut serialize / deserialize ---
+
+class FakeCut:
+    def __init__(self, **kwargs):
+        defaults = {
+            "name": "Cut01",
+            "marker_name": "Cut01",
+            "instance_name": "",
+            "enabled": True,
+            "frame_override": False,
+            "frame_start_override": 1,
+            "frame_end_override": 250,
+            "notes": "",
+            "orphan": False,
+        }
+        defaults.update(kwargs)
+        for k, v in defaults.items():
+            setattr(self, k, v)
+
+
+def test_serialize_cut_roundtrip():
+    src = FakeCut(
+        name="OpeningShot",
+        marker_name="OpeningShot",
+        instance_name="HeroCam",
+        enabled=True,
+        frame_override=True,
+        frame_start_override=100,
+        frame_end_override=200,
+        notes="ヒロイン正面アップ",
+    )
+    data = json_io.serialize_cut(src)
+    assert data["name"] == "OpeningShot"
+    assert data["marker_name"] == "OpeningShot"
+    assert data["instance_name"] == "HeroCam"
+    assert data["frame_override"] is True
+    assert data["frame_start_override"] == 100
+    assert data["frame_end_override"] == 200
+
+    dst = FakeCut()
+    n = json_io.deserialize_cut(dst, data)
+    assert n == len(data)
+    assert dst.name == "OpeningShot"
+    assert dst.instance_name == "HeroCam"
+    assert dst.frame_start_override == 100
+
+
+def test_serialize_scene_with_cuts():
+    class FakeSceneWithCuts:
+        preset_root_name = "Kinema_Presets"
+        instances_root_name = "Kinema_Instances"
+        instances = [FakeInstance(name="HeroCam")]
+        cuts = [FakeCut(name="C01"), FakeCut(name="C02", instance_name="HeroCam")]
+
+    data = json_io.serialize_scene(FakeSceneWithCuts())
+    assert "cuts" in data
+    assert len(data["cuts"]) == 2
+    assert data["cuts"][0]["name"] == "C01"
+    assert data["cuts"][1]["instance_name"] == "HeroCam"
+
+
+def test_deserialize_scene_legacy_without_cuts():
+    """旧スキーマ（cuts キー無し）でも安全に読込めること。"""
+    class FakeSceneLegacy:
+        preset_root_name = ""
+        instances_root_name = ""
+        instances = []
+        # cuts attribute は持たない
+
+    legacy_data = {
+        "kinema_schema": 1,
+        "instances": [],
+        # cuts キー無し
+    }
+    result = json_io.deserialize_scene(
+        FakeSceneLegacy(), legacy_data,
+        resolve_object=lambda n: None,
+        resolve_collection=lambda n: None,
+        add_instance=lambda: FakeInstance(),
+    )
+    assert result["ok"] is True
+    assert result["cuts_added"] == 0
 
 
 if __name__ == "__main__":

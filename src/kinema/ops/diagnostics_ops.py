@@ -14,9 +14,14 @@ from ._base import KinemaOperator
 
 
 _KINEMA_HANDLER_NAMES = (
-    "kinema_frame_change_pre",
+    "kinema_frame_change_post",
     "kinema_depsgraph_update_post",
     "kinema_load_post",
+    "kinema_render_init",
+    "kinema_render_complete",
+    "kinema_render_cancel_clear",
+    # 旧名（残骸検出用）
+    "kinema_frame_change_pre",
 )
 
 
@@ -30,7 +35,11 @@ class KINEMA_OT_run_diagnostics(KinemaOperator):
         lines: list[str] = []
 
         # --- handler 数チェック ---
-        for hook_name in ("frame_change_pre", "depsgraph_update_post", "load_post"):
+        for hook_name in (
+            "frame_change_post", "frame_change_pre",  # pre は残骸検出用
+            "depsgraph_update_post", "load_post",
+            "render_init", "render_complete", "render_cancel",
+        ):
             hook_list = getattr(bpy.app.handlers, hook_name)
             kinema_count = sum(
                 1 for fn in hook_list

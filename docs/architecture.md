@@ -33,12 +33,14 @@ kinema/
 │   ├── data/                    # PropertyGroup 定義
 │   │   ├── preset_item.py       # Preset 一覧の 1 行（is_header / group / camera 情報）
 │   │   ├── instance_item.py     # ロード済みカメラ 1 行（Follow/LookAt/Noise + Solo/Lock）
-│   │   ├── scene_settings.py    # Scene.kinema（root 名 + presets/instances Collection）
+│   │   ├── camera_preset.py     # Camera Data 単位の事前設定（Preset 用）
+│   │   ├── cut_item.py          # Cut（Timeline Marker 連動カット情報）
+│   │   ├── scene_settings.py    # Scene.kinema（root 名 + presets/instances/cuts Collection）
 │   │   └── wm_settings.py       # WindowManager.kinema_clipboard（Copy/Paste 用）
 │   ├── ops/                     # Operator 群（基底 _base.KinemaOperator）
 │   │   ├── _base.py             # UNDO flag + tag_redraw 自動化
 │   │   ├── preset_ops.py        # Scan / Load / Toggle Collapse
-│   │   ├── instance_ops.py      # Duplicate / Unload / Preview / Set Follow Angle 等
+│   │   ├── instance_ops.py      # Detach Follow / Unload / Preview / Set Follow Angle 等
 │   │   ├── source_ops.py        # Quick Start / Init Root / Capture View / Add Selected
 │   │   ├── workspace_ops.py     # Create / Remove Kinema Workspace
 │   │   ├── handler_ops.py       # cineflow 切替 + handler toggle
@@ -46,17 +48,22 @@ kinema/
 │   │   ├── keyframe_ops.py      # Key All / Rebuild Keying Set / Toggle Auto KF
 │   │   ├── clipboard_ops.py     # Copy/Paste（カテゴリ別 + 一括）
 │   │   ├── io_ops.py            # JSON Export / Import
-│   │   └── cineflow_import.py   # 旧 cineflow Instance 取り込み
+│   │   ├── cineflow_import.py   # 旧 cineflow Instance 取り込み
+│   │   ├── bake_ops.py          # Animation Bake（visual keying）
+│   │   ├── render_ops.py        # 非同期キュー render（Selected / Active Instance）
+│   │   └── cut_ops.py           # Sync / Add / Remove / Rename / Render Cuts
 │   ├── runtime/                 # frame_change/depsgraph で動くロジック
-│   │   ├── handlers.py          # handler 登録/解除 + cineflow 共存制御
+│   │   ├── handlers.py          # handler 登録/解除 + cineflow 共存制御 + render_init/complete
 │   │   ├── damping.py           # FPS+実時間ハイブリッド dt（純粋ロジック）
-│   │   ├── follow_lookat.py     # Euler XYZ Follow + 自前 LookAt + Roll
+│   │   ├── follow_lookat.py     # Euler XYZ Follow + 自前 LookAt + Roll + use_damping
 │   │   ├── noise.py             # delta_location/euler への手振れ書込
-│   │   └── instance_dispatcher.py # 全 Instance 走査して 1 ステップ適用
+│   │   ├── target_resolve.py    # Collection モードの target 解決
+│   │   └── instance_dispatcher.py # 全 Instance 走査して 1 ステップ適用 + Preset preview
 │   ├── ui/                      # Panel / UIList
 │   │   ├── main_panel.py        # Properties > Scene > Kinema
 │   │   ├── presets_view.py      # UIList（折り畳みグループ）
-│   │   └── instances_view.py    # UIList（#1/#2 + Solo/Mute/Lock 3 アイコン + DUP 警告）
+│   │   ├── instances_view.py    # UIList（#1/#2 + Solo/Mute/Lock 3 アイコン + DUP 警告）
+│   │   └── cuts_view.py         # UIList（Cut 一覧、enabled / orphan / instance link 表示）
 │   └── utils/                   # 純粋ロジック・bpy 薄ラッパ
 │       ├── collections.py       # scan_presets_with_headers / duplicate_camera_as_instance
 │       ├── source_init.py       # ensure_preset_root / quick_start
@@ -76,7 +83,7 @@ kinema/
 │   ├── test_tags.py
 │   ├── test_damping.py
 │   ├── test_clipboard.py
-│   └── test_json_io.py
+│   └── test_json_io.py           # instances + cuts のシリアライズ往復
 ├── docs/
 │   ├── architecture.md          # ← 本ファイル
 │   ├── manual_smoke_test.md     # 動作確認手順
