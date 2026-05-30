@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+### Added: Repair Scene Operator（scene 健全化）
+- **Blender 標準レンダーまでクラッシュする** 状態の救出用 Operator を追加:
+  - `KINEMA_OT_repair_scene` (`kinema.repair_scene`)
+  - **検出と削除**:
+    1. **Orphan LookAt Proxy Empty**: 親 Camera を失った `*_KnLookatProxy`
+       オブジェクト（過去の kinema クラッシュで残留）
+    2. **Dead Track-To 制約**: target が削除済みの Track-To 制約
+    3. **Dead Instance エントリ**: camera_ref / collection_ref 両方 dead
+       な行（オプション、デフォルト OFF）
+  - 削除前にダイアログで件数と内訳を表示。Undo で巻き戻し可
+  - 最後に Blender 標準の `outliner.orphans_purge` を呼んで未使用 ID も掃除
+- main_panel の Diagnostics セクションに「Repair Scene」ボタンを追加（赤色）
+
 ### Fixed: render 中の scene mutation 起因クラッシュ（**核心バグ**）
 - **`cleanup_lookat_proxy` が render 中の `frame_change_post` から呼ばれて
   `collection.objects.unlink()` / `objects.remove()` を実行 → depsgraph

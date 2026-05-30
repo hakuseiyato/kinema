@@ -19,6 +19,7 @@ from . import (
     bake_ops,
     render_ops,
     cut_ops,
+    repair_ops,
 )
 
 
@@ -67,6 +68,7 @@ _CLASSES = (
     cut_ops.KINEMA_OT_rename_cut,
     cut_ops.KINEMA_OT_jump_to_cut,
     cut_ops.KINEMA_OT_render_cuts,
+    repair_ops.KINEMA_OT_repair_scene,
 )
 
 

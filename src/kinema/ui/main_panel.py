@@ -258,6 +258,14 @@ class KINEMA_PT_main(bpy.types.Panel):
         diag_row.label(text="Diagnostics", icon="TOOL_SETTINGS")
         diag_row.operator("kinema.run_diagnostics", text="Run", icon="PLAY")
         diag_row.operator("kinema.toggle_handlers", text="", icon="FILE_REFRESH")
+        # Repair（過去のクラッシュで scene に残った orphan データを掃除）
+        repair_row = diag_box.row(align=True)
+        repair_row.alert = True
+        repair_row.operator(
+            "kinema.repair_scene",
+            text="Repair Scene (Blender 標準レンダーがクラッシュする場合)",
+            icon="MODIFIER",
+        )
 
         # 最新 Run の出力をパネル内に貼り付け
         wm = context.window_manager
