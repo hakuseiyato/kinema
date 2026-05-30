@@ -57,7 +57,6 @@ _CLASSES = (
     cineflow_import.KINEMA_OT_import_from_cineflow,
     bake_ops.KINEMA_OT_bake_animation,
     render_ops.KINEMA_OT_render,
-    render_ops.KINEMA_OT_render_modal,
     render_ops.KINEMA_OT_render_selected_instances,
     render_ops.KINEMA_OT_render_active_instance,
     render_ops.KINEMA_OT_cancel_render_queue,
