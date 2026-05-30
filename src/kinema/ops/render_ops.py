@@ -34,12 +34,12 @@ _render_active: bool = False
 
 
 def is_queue_active() -> bool:
-    return _render_active
+    # モーダル方式: _modal_state が IDLE 以外なら active 扱い
+    return _modal_state != "IDLE" or _render_active
 
 
 def queue_size() -> int:
-    # 同期実行に変更したので、Operator 実行中以外は常に 0
-    return 0
+    return len(_modal_queue)
 
 
 # ---------------------------------------------------------------------------
@@ -239,58 +239,187 @@ def kickoff_queue_with_ranges(scene, items) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Deferred render: operator の execute からは直接 render しない
+# モーダル方式のバッチレンダー（Blender 標準の render ウィンドウを開く）
 # ---------------------------------------------------------------------------
 #
-# 問題:
-#   - operator の execute() の中から bpy.ops.render.render(animation=True) を
-#     呼ぶと、Blender の operator context が呼出側 (kinema.render) のまま
-#     ネストしてしまい、render が「正常に開始されない」ことがある
+# 設計:
+#   - kinema.render が items を _modal_queue に積み、kinema.render_modal を
+#     INVOKE_DEFAULT で起動
+#   - kinema.render_modal が timer (0.5s) で modal ループし、_modal_state を
+#     見て次の render を INVOKE_DEFAULT で起動
+#   - 各 render 完了時に Blender の render_complete handler が _modal_state
+#     を IDLE に戻す → 次の timer tick で次の item へ
+#   - キュー枯渇 / Esc / cancel で modal を終了し、scene state を復元
 #
-# 解決:
-#   - operator は items を pending に積んで FINISHED を返すだけ
-#   - timer が次の event tick で起動し、operator context が抜けた後に
-#     bpy.ops.render.render(animation=True) を呼ぶ
-#   - 旧 INVOKE_DEFAULT + timer の問題（INVOKE による depsgraph rebuild
-#     競合）は同期 render を使うので発生しない
+# 安定化のポイント:
+#   - items は事前に厳密にバリデート（camera 存在チェック）
+#   - 各 render 起動前に scene を更新するが、INVOKE_DEFAULT は async なので
+#     ネスト context の問題を回避できる
+#   - 各 render 間に 0.5s 以上の余白があるので depsgraph が落ち着く時間がある
 
-_pending_items: list = []
-_pending_scene_name: str = ""
+_modal_queue: list = []
+_modal_state: str = "IDLE"   # IDLE | RENDERING | DONE | ABORT
+_modal_scene_name: str = ""
+_modal_saved: dict = {}
+_modal_current_label: str = ""
 
 
-def _deferred_render_runner():
-    """timer から呼ばれて pending items を同期実行する。"""
-    global _pending_items, _pending_scene_name
-    items = list(_pending_items)
-    scene_name = _pending_scene_name
-    _pending_items.clear()
-    _pending_scene_name = ""
-    if not items:
+def _modal_resolve_scene():
+    return bpy.data.scenes.get(_modal_scene_name)
+
+
+def _modal_validate_item(item) -> tuple | None:
+    """item を name 形式に正規化し、camera 存在を検証。失敗なら None。"""
+    try:
+        if len(item) == 5:
+            sub_dir, cam, label, fs, fe = item
+        else:
+            sub_dir, cam, label = item
+            fs, fe = None, None
+        cam_name = cam if isinstance(cam, str) else getattr(cam, "name", "")
+        if not cam_name:
+            return None
+        camera = bpy.data.objects.get(cam_name)
+        if camera is None or getattr(camera, "type", None) != "CAMERA":
+            return None
+        return (sub_dir, cam_name, label, fs, fe)
+    except Exception:
         return None
-    scene = bpy.data.scenes.get(scene_name)
-    if scene is None:
-        print(f"[kinema:render] deferred: scene '{scene_name}' missing")
-        return None
-    print(f"[kinema:render] deferred render start: {len(items)} item(s)")
-    run_render_queue(scene, items)
-    return None  # timer は 1 度きり
+
+
+@persistent
+def _modal_on_render_complete(*args):
+    """render 1 件完了 → modal を IDLE に戻す。modal timer が次を起動する。"""
+    global _modal_state
+    if _modal_state == "RENDERING":
+        print(f"[kinema:render] item complete: {_modal_current_label}")
+        _modal_state = "IDLE"
+
+
+@persistent
+def _modal_on_render_cancel(*args):
+    """Esc 等でキャンセル → キュー破棄"""
+    global _modal_state
+    if _modal_state == "RENDERING":
+        print("[kinema:render] cancel detected, aborting queue")
+        _modal_state = "ABORT"
+
+
+def _modal_register_handlers():
+    for hooks, fn in (
+        (bpy.app.handlers.render_complete, _modal_on_render_complete),
+        (bpy.app.handlers.render_cancel, _modal_on_render_cancel),
+    ):
+        if fn not in hooks:
+            hooks.append(fn)
+
+
+def _modal_unregister_handlers():
+    for hooks, fn in (
+        (bpy.app.handlers.render_complete, _modal_on_render_complete),
+        (bpy.app.handlers.render_cancel, _modal_on_render_cancel),
+    ):
+        try:
+            if fn in hooks:
+                hooks.remove(fn)
+        except Exception:
+            pass
+
+
+def _modal_save_scene_state(scene):
+    _modal_saved.clear()
+    _modal_saved["filepath"] = scene.render.filepath
+    _modal_saved["camera_name"] = scene.camera.name if scene.camera is not None else ""
+    _modal_saved["frame_start"] = scene.frame_start
+    _modal_saved["frame_end"] = scene.frame_end
+
+
+def _modal_restore_scene_state(scene):
+    if not _modal_saved or scene is None:
+        return
+    try:
+        scene.render.filepath = _modal_saved.get("filepath", scene.render.filepath)
+        cam_name = _modal_saved.get("camera_name", "")
+        if cam_name:
+            cam = bpy.data.objects.get(cam_name)
+            if cam is not None and cam.type == "CAMERA":
+                scene.camera = cam
+        scene.frame_start = _modal_saved.get("frame_start", scene.frame_start)
+        scene.frame_end = _modal_saved.get("frame_end", scene.frame_end)
+    except Exception:
+        pass
+    _modal_saved.clear()
+
+
+def _modal_start_item(scene, item) -> bool:
+    """次の item の render を INVOKE_DEFAULT で起動。"""
+    global _modal_state, _modal_current_label
+    sub_dir, cam_name, label, fs, fe = item
+    camera = bpy.data.objects.get(cam_name)
+    if camera is None or camera.type != "CAMERA":
+        print(f"[kinema:render] skip '{label}': camera missing")
+        return False
+    try:
+        scene.render.filepath = sub_dir
+        scene.camera = camera
+        if fs is not None and fe is not None:
+            scene.frame_start = int(fs)
+            scene.frame_end = int(fe)
+        _modal_current_label = label
+        _modal_state = "RENDERING"
+        if fs is not None:
+            print(f"[kinema:render] starting: {label}  F{fs}-{fe}  →  {sub_dir}")
+        else:
+            print(f"[kinema:render] starting: {label}  →  {sub_dir}")
+        bpy.ops.render.render("INVOKE_DEFAULT", animation=True)
+        return True
+    except Exception as exc:
+        print(f"[kinema:render] error starting '{label}': {exc}")
+        _modal_state = "IDLE"
+        return False
 
 
 def schedule_render(scene, items) -> int:
-    """items を pending に積んで timer 起動。
-
-    Returns: 実際にスケジュールされた item 数（0 なら何もしない）。
-    """
-    global _pending_items, _pending_scene_name
+    """items を modal queue に積んで kinema.render_modal を invoke する。"""
+    global _modal_queue, _modal_state, _modal_scene_name
+    if _modal_state != "IDLE" and _modal_state != "DONE":
+        print(f"[kinema:render] schedule rejected: state={_modal_state}")
+        return 0
     if not items:
         return 0
-    if _render_active:
-        print("[kinema:render] schedule: already rendering, abort")
+
+    # 全 item をバリデート
+    normalized = []
+    for item in items:
+        norm = _modal_validate_item(item)
+        if norm is not None:
+            normalized.append(norm)
+    if not normalized:
+        print("[kinema:render] all items invalid")
         return 0
-    _pending_items[:] = items
-    _pending_scene_name = scene.name
-    bpy.app.timers.register(_deferred_render_runner, first_interval=0.05)
-    return len(items)
+
+    _modal_queue[:] = normalized
+    _modal_scene_name = scene.name
+    _modal_save_scene_state(scene)
+    _modal_register_handlers()
+
+    # dispatcher にも render 中と伝える
+    try:
+        from ..runtime import instance_dispatcher as _id
+        _id.set_rendering(True)
+    except Exception:
+        pass
+
+    # modal Operator を起動
+    print(f"[kinema:render] starting modal queue: {len(normalized)} item(s)")
+    try:
+        bpy.ops.kinema.render_modal("INVOKE_DEFAULT")
+    except Exception as exc:
+        print(f"[kinema:render] failed to invoke modal: {exc}")
+        _modal_queue.clear()
+        _modal_unregister_handlers()
+        return 0
+    return len(normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -356,17 +485,90 @@ class KINEMA_OT_render(KinemaOperator):
         if not items:
             self.report({"WARNING"}, f"対象なし ({label})")
             return {"CANCELLED"}
-        if _render_active:
-            self.report({"WARNING"}, "既にレンダリング中です")
+        if _modal_state not in ("IDLE", "DONE"):
+            self.report({"WARNING"}, f"既にレンダリング中です ({_modal_state})")
             return {"CANCELLED"}
 
-        # deferred で実行（operator context から抜けてから render 起動）
         n = schedule_render(scene, items)
         if n > 0:
-            self.report({"INFO"}, f"Scheduled {n} item(s) ({label})")
+            self.report({"INFO"}, f"Started: {n} item(s) ({label})")
             return {"FINISHED"}
-        self.report({"ERROR"}, "スケジュール失敗")
+        self.report({"ERROR"}, "起動失敗（System Console にログ）")
         return {"CANCELLED"}
+
+
+class KINEMA_OT_render_modal(bpy.types.Operator):
+    """バッチレンダーのモーダル進行制御。
+
+    `schedule_render()` が `_modal_queue` を埋めて INVOKE_DEFAULT で起動する。
+    timer (0.5s) で modal ループし、`_modal_state` を見て:
+      - IDLE: 次の item を INVOKE_DEFAULT で render 起動 → state=RENDERING
+      - RENDERING: 何もしない（Blender の render_complete handler が IDLE に戻す）
+      - DONE / ABORT: cleanup して終了
+
+    UNDO は付けない（モーダル中の undo は壊れる）。
+    """
+    bl_idname = "kinema.render_modal"
+    bl_label = "Render Modal Queue"
+    bl_options = {"INTERNAL"}
+
+    _timer = None
+
+    def invoke(self, context, event):  # noqa: ARG002
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.5, window=context.window)
+        wm.modal_handler_add(self)
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        global _modal_state
+        if event.type == "ESC":
+            print("[kinema:render] modal: Esc pressed, aborting")
+            return self._cleanup(context, "user cancelled")
+        if event.type != "TIMER":
+            return {"PASS_THROUGH"}
+
+        # 状態遷移
+        if _modal_state == "ABORT":
+            return self._cleanup(context, "abort")
+        if _modal_state == "RENDERING":
+            return {"PASS_THROUGH"}
+        if _modal_state == "IDLE":
+            if not _modal_queue:
+                return self._cleanup(context, "complete")
+            scene = _modal_resolve_scene()
+            if scene is None:
+                print("[kinema:render] modal: scene gone, abort")
+                return self._cleanup(context, "scene missing")
+            item = _modal_queue.pop(0)
+            ok = _modal_start_item(scene, item)
+            if not ok:
+                # 起動失敗 → 次へ
+                return {"PASS_THROUGH"}
+            return {"PASS_THROUGH"}
+        return {"PASS_THROUGH"}
+
+    def _cleanup(self, context, reason: str):
+        global _modal_state, _modal_queue
+        wm = context.window_manager
+        if self._timer is not None:
+            try:
+                wm.event_timer_remove(self._timer)
+            except Exception:
+                pass
+            self._timer = None
+        _modal_queue.clear()
+        _modal_state = "IDLE"
+        _modal_unregister_handlers()
+        try:
+            from ..runtime import instance_dispatcher as _id
+            _id.set_rendering(False)
+        except Exception:
+            pass
+        scene = _modal_resolve_scene()
+        _modal_restore_scene_state(scene)
+        print(f"[kinema:render] modal cleanup: {reason}")
+        return {"FINISHED" if reason == "complete" else "CANCELLED"}
 
 
 # ---------------------------------------------------------------------------
@@ -452,12 +654,12 @@ class KINEMA_OT_render_selected_instances(KinemaOperator):
             self.report({"WARNING"}, "有効なカメラを持つ Instance がありません")
             return {"CANCELLED"}
 
-        result = run_render_queue(scene, items)
-        msg = f"Rendered {result['rendered']} instances"
-        if result["skipped"]:
-            msg += f", {result['skipped']} skipped"
-        self.report({"INFO"}, msg)
-        return {"FINISHED"}
+        n = schedule_render(scene, items)
+        if n > 0:
+            self.report({"INFO"}, f"Started: {n} instances")
+            return {"FINISHED"}
+        self.report({"ERROR"}, "起動失敗")
+        return {"CANCELLED"}
 
 
 class KINEMA_OT_render_active_instance(KinemaOperator):
@@ -523,11 +725,11 @@ class KINEMA_OT_render_active_instance(KinemaOperator):
         base_dir = _normalize_dir(scene.render.filepath)
         items = [(base_dir + inst.name + os.sep, cam.name, inst.name)]
 
-        result = run_render_queue(scene, items)
-        if result["rendered"]:
-            self.report({"INFO"}, f"Rendered: {inst.name}")
+        n = schedule_render(scene, items)
+        if n > 0:
+            self.report({"INFO"}, f"Started: {inst.name}")
             return {"FINISHED"}
-        self.report({"ERROR"}, "レンダー失敗")
+        self.report({"ERROR"}, "起動失敗")
         return {"CANCELLED"}
 
 

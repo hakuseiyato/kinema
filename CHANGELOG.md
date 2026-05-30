@@ -4,6 +4,29 @@
 
 ## [Unreleased]
 
+### Fixed: 「Render 押すと画面が白くなって始まらない」を解消
+- **モーダル Operator 方式に再設計**:
+  - 旧: timer から同期 `bpy.ops.render.render(animation=True)` を呼んでいた
+    が、Blender 標準の render ウィンドウが開かず進行表示なし。長時間タスク
+    だと「画面真っ白で固まったように見える」状態に
+  - 新: `KINEMA_OT_render_modal` (modal Operator) を `INVOKE_DEFAULT` で
+    起動。Blender 標準の render ウィンドウが開き、進行バーが見える
+  - `_modal_queue` / `_modal_state` で 1 件ずつ INVOKE_DEFAULT render を
+    chain。各 render の完了は `render_complete` handler で検出し、modal
+    timer (0.5s) が次の item を起動
+  - 各 item 間に 0.5s 以上の余白があるので depsgraph rebuild が落ち着いてから
+    次に進む（旧 0.2s 連発で起きていた競合クラッシュを避ける）
+  - Esc / `render_cancel` でキュー全破棄、scene state を復元
+- **事前バリデーション強化**:
+  - `_modal_validate_item()` で全 item を起動前に camera 存在チェック
+  - camera 削除済み等の invalid item は事前に除外（modal 中の skip パスも
+    保持）
+- **System Console ログ強化**:
+  - `[kinema:render] starting modal queue: N item(s)`
+  - `[kinema:render] starting: <label> F<fs>-<fe> -> <path>`
+  - `[kinema:render] item complete: <label>`
+  - `[kinema:render] modal cleanup: <reason>`
+
 ### Changed (UX): 単一 Render ボタン + Source/Mode トグル
 - **複数のレンダーボタンを 1 つに集約**（ユーザー要望）:
   - 旧: Render セクションに `Active Cut` / `All Enabled` / `Active Only` /
