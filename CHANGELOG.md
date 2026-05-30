@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+### Changed (BIG: 非同期キュー → 同期実行に切替、クラッシュ回避)
+- **レンダー実行を同期型に書き直し**:
+  - 旧 timer + `INVOKE_DEFAULT` 方式は Blender 内部で「render 中の scene
+    変更 → depsgraph rebuild → render thread の object 走査と競合」する
+    NULL deref クラッシュを起こす（`DepsgraphNodeBuilder::add_id_node` で
+    EXCEPTION_ACCESS_VIOLATION）
+  - 同期 `bpy.ops.render.render(animation=True)` 直接呼出に変更。Blender は
+    レンダー中ブロックされる（progress bar 表示）が、クラッシュは回避できる
+  - Esc で中断可（Blender 標準）
+  - `_render_queue` / `_render_scene_name` / timer / `_finalize` /
+    `_force_clear_state` 等の async 機構を全廃。`run_render_queue(scene, items)`
+    一本に集約
+- **Render Cut ボタンを 3 種類 → 2 種類に簡素化**（ユーザー要望）:
+  - 旧: Active / Enabled / Range...（3 ボタン + scope 切替）
+  - 新: **Active Cut** / **All Enabled**（2 ボタン）
+  - `scope=RANGE` と `KINEMA_OT_render_active_cut` を撤去
+- **Cut 編集 UI を整理**（ユーザー要望「設定を簡単に」）:
+  - name 直接編集を撤去し「Rename」ボタンに集約（cascade rename 必須化）
+  - frame_override OFF 時は Marker 由来の範囲を 1 行で表示
+  - frame_override ON 時のみ Frame Start/End フィールド表示
+  - Marker 名は右下に表示のみ（編集不要）
+
 ### Changed (UX)
 - **Cuts と Render を 1 セクションに統合**:
   - 旧 Cuts box / Render box を 1 つの「Render」box にまとめ、ユーザーが

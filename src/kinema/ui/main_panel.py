@@ -569,18 +569,14 @@ def _draw_render_section(layout, scene, st, context) -> None:
         icon="MARKER_HLT",
     )
     cut_btns = targets_box.row(align=True)
-    cut_btns.operator(
-        "kinema.render_active_cut", text="Active",
-        icon="RENDER_ANIMATION",
+    op_a = cut_btns.operator(
+        "kinema.render_cuts", text="Active Cut", icon="RENDER_ANIMATION",
     )
+    op_a.scope = "ACTIVE"
     op_e = cut_btns.operator(
-        "kinema.render_cuts", text="Enabled", icon="HIDE_OFF",
+        "kinema.render_cuts", text="All Enabled", icon="HIDE_OFF",
     )
     op_e.scope = "ENABLED"
-    op_r = cut_btns.operator(
-        "kinema.render_cuts", text="Range...", icon="SEQUENCE",
-    )
-    op_r.scope = "RANGE"
 
 
 def _draw_render_output_subsection(parent_box, scene, st) -> None:
@@ -708,28 +704,36 @@ def _draw_cuts_subsection(parent_box, scene, st) -> None:
             text=f"Marker '{cut.marker_name}' が見つかりません",
             icon="ERROR",
         )
-    edit.use_property_split = True
-    edit.use_property_decorate = False
-    edit.prop(cut, "name", text="Name")
-    edit.prop(cut, "marker_name", text="Marker")
-    edit.prop_search(cut, "instance_name", st, "instances", text="Instance")
-    edit.prop(cut, "enabled")
 
-    # フレーム範囲: override か Marker 由来
-    fr_row = edit.row(align=True)
-    fr_row.prop(cut, "frame_override", text="")
-    sub = fr_row.column(align=True)
-    sub.enabled = cut.frame_override
-    sub.prop(cut, "frame_start_override", text="Frame Start")
-    sub.prop(cut, "frame_end_override", text="End")
-    # Marker 由来の参考表示
+    # --- 主要設定（常時表示） ---
+    main = edit.column(align=True)
+    main.use_property_split = True
+    main.use_property_decorate = False
+    # name は rename カスケード対応の専用 Operator を促す（直接編集は無効化）
+    name_row = main.row(align=True)
+    name_row.label(text=f"Name: {cut.name}", icon="MARKER_HLT")
+    name_row.operator("kinema.rename_cut", text="Rename", icon="GREASEPENCIL")
+    main.prop_search(cut, "instance_name", st, "instances", text="Instance")
+    main.prop(cut, "enabled", text="Render Enabled")
+
+    # フレーム範囲: 自動 or 上書き（折り畳み）
+    fr_row = main.row(align=True)
+    fr_row.prop(cut, "frame_override", text="Override Frame Range")
     if not cut.frame_override:
         try:
             from ..ops.cut_ops import _resolve_cut_frame_range, _sorted_markers
             fs, fe = _resolve_cut_frame_range(scene, cut, _sorted_markers(scene))
-            info = edit.row()
-            info.label(text=f"  (Marker: F{fs} – {fe})")
+            fr_row.label(text=f"F{fs} – {fe}")
         except Exception:
             pass
+    else:
+        rrow = main.column(align=True)
+        rrow.prop(cut, "frame_start_override", text="Frame Start")
+        rrow.prop(cut, "frame_end_override", text="End")
 
-    edit.prop(cut, "notes", text="Notes")
+    main.prop(cut, "notes", text="Notes")
+
+    # --- 詳細（折り畳み式 - Marker name の直接編集は通常不要）---
+    adv = edit.row(align=True)
+    adv.alignment = "RIGHT"
+    adv.label(text=f"Marker: {cut.marker_name or '-'}", icon="OUTLINER_DATA_GP_LAYER")

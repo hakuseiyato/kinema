@@ -402,35 +402,31 @@ def _draw_cut_summary(layout, scene, targets, title: str) -> None:
 
 
 class KINEMA_OT_render_cuts(KinemaOperator):
-    """Cut を非同期キューで順次レンダー。
+    """Cut を同期バッチレンダー。
 
     `scope` で対象を選択:
-      - ENABLED : enabled な Cut すべて（デフォルト）
       - ACTIVE  : Active Cut 1 個だけ
-      - RANGE   : Cut の番号で M..N を指定
+      - ENABLED : enabled な Cut すべて
     """
     bl_idname = "kinema.render_cuts"
     bl_label = "Render Cuts"
     bl_description = (
-        "Cut を <base>/<cut_name>/ サブフォルダに非同期キューでバッチレンダー。"
-        "対象は enabled / active / range から選択"
+        "Cut を <base>/<cut_name>/ サブフォルダに同期バッチレンダー。"
+        "対象は Active Cut か Enabled Cuts 全部から選択"
     )
 
     scope: bpy.props.EnumProperty(
         name="Scope",
         items=(
+            ("ACTIVE", "Active Cut", "Active Cut だけ（enabled 無視）"),
             ("ENABLED", "Enabled Cuts", "enabled=ON な Cut をすべて"),
-            ("ACTIVE", "Active Cut Only", "Active Cut だけ（enabled 無視）"),
-            ("RANGE", "Index Range", "Cut の番号で M..N を指定"),
         ),
-        default="ENABLED",
+        default="ACTIVE",
     )
-    range_start: IntProperty(name="Start Index", default=1, min=1)
-    range_end: IntProperty(name="End Index", default=10, min=1)
 
     def invoke(self, context, event):  # noqa: ARG002
         try:
-            return context.window_manager.invoke_props_dialog(self, width=620)
+            return context.window_manager.invoke_props_dialog(self, width=560)
         except Exception as exc:
             self.report({"ERROR"}, f"ダイアログ起動失敗: {exc}")
             return {"CANCELLED"}
@@ -446,40 +442,29 @@ class KINEMA_OT_render_cuts(KinemaOperator):
             if 0 <= idx < len(cuts):
                 return [cuts[idx]]
             return []
-        if self.scope == "RANGE":
-            # 1-based 入力を 0-based に変換、clamp
-            s = max(1, int(self.range_start)) - 1
-            e = min(len(cuts), int(self.range_end))
-            if s >= e:
-                return []
-            return cuts[s:e]
-        # ENABLED（デフォルト）
+        # ENABLED
         return [c for c in cuts if c.enabled and not c.orphan]
 
     def draw(self, context):
         layout = self.layout
         try:
-            layout.prop(self, "scope", text="対象")
-            if self.scope == "RANGE":
-                row = layout.row(align=True)
-                row.prop(self, "range_start")
-                row.prop(self, "range_end")
+            layout.prop(self, "scope", text="対象", expand=True)
             layout.separator()
             scene = context.scene
             targets = self._resolve_targets(scene)
             _draw_cut_summary(layout, scene, targets, "Render Cuts")
+            layout.separator()
+            warn = layout.row()
+            warn.alert = True
+            warn.label(text="同期レンダー: 終了まで Blender はブロック (Esc で中断)",
+                       icon="INFO")
         except Exception as exc:
-            # ダイアログ描画でクラッシュさせないために exception を握る
             layout.label(text=f"描画エラー: {exc}", icon="ERROR")
             print(f"[kinema:render_cuts] draw error: {exc}")
 
     def run(self, context):
         from ..ops import render_ops as _ro
         scene = context.scene
-
-        if _ro.is_queue_active():
-            self.report({"WARNING"}, "既にレンダリングキューが実行中です")
-            return {"CANCELLED"}
 
         targets = self._resolve_targets(scene)
         if not targets:
@@ -491,69 +476,10 @@ class KINEMA_OT_render_cuts(KinemaOperator):
             self.report({"WARNING"}, "Render 可能な Cut がありません（Instance 未紐付？）")
             return {"CANCELLED"}
 
-        if _ro.kickoff_queue_with_ranges(scene, items):
-            self.report(
-                {"INFO"},
-                f"Queued {len(items)} cuts ({self.scope})"
-                + (f", {skipped} skipped" if skipped else ""),
-            )
-            return {"FINISHED"}
-        self.report({"ERROR"}, "キューの起動に失敗")
-        return {"CANCELLED"}
-
-
-class KINEMA_OT_render_active_cut(KinemaOperator):
-    """Active Cut 1 個だけを即座にレンダー（確認ダイアログを出す）。
-
-    `kinema.render_cuts` で scope=ACTIVE と同等だが、ワンクリック起動できる
-    ように専用 Operator として用意。
-    """
-    bl_idname = "kinema.render_active_cut"
-    bl_label = "Render Active Cut"
-    bl_description = "Active Cut だけを <base>/<cut_name>/ にレンダー（単発）"
-
-    def invoke(self, context, event):  # noqa: ARG002
-        try:
-            return context.window_manager.invoke_props_dialog(self, width=520)
-        except Exception as exc:
-            self.report({"ERROR"}, f"ダイアログ起動失敗: {exc}")
-            return {"CANCELLED"}
-
-    def draw(self, context):
-        layout = self.layout
-        try:
-            scene = context.scene
-            st = scene.kinema
-            idx = st.active_cut_index
-            if not (0 <= idx < len(st.cuts)):
-                layout.label(text="Cut が選択されていません", icon="ERROR")
-                return
-            _draw_cut_summary(layout, scene, [st.cuts[idx]], "Render Active Cut")
-        except Exception as exc:
-            layout.label(text=f"描画エラー: {exc}", icon="ERROR")
-            print(f"[kinema:render_active_cut] draw error: {exc}")
-
-    def run(self, context):
-        from ..ops import render_ops as _ro
-        scene = context.scene
-        st = scene.kinema
-
-        if _ro.is_queue_active():
-            self.report({"WARNING"}, "既にレンダリングキューが実行中です")
-            return {"CANCELLED"}
-
-        idx = st.active_cut_index
-        if not (0 <= idx < len(st.cuts)):
-            self.report({"WARNING"}, "Cut が選択されていません")
-            return {"CANCELLED"}
-
-        items, skipped = _build_cut_queue_items(scene, [st.cuts[idx]])
-        if not items:
-            self.report({"WARNING"}, "Render 不可（Instance 未紐付 or orphan）")
-            return {"CANCELLED"}
-
-        if _ro.kickoff_queue_with_ranges(scene, items):
-            self.report({"INFO"}, f"Queued: {st.cuts[idx].name}")
-            return {"FINISHED"}
-        self.report({"ERROR"}, "キューの起動に失敗")
-        return {"CANCELLED"}
+        result = _ro.run_render_queue(scene, items)
+        msg = f"Rendered {result['rendered']} cuts ({self.scope})"
+        if result["skipped"] or skipped:
+            total_skip = result["skipped"] + skipped
+            msg += f", {total_skip} skipped"
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
