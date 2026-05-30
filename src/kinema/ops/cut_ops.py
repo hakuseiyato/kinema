@@ -384,12 +384,19 @@ def _draw_cut_summary(layout, scene, targets, title: str) -> None:
     col = layout.column(align=True)
     col.scale_y = 0.85
     for cut in targets[:12]:
-        fs, fe = _resolve_cut_frame_range(scene, cut, sorted_ms)
+        try:
+            fs, fe = _resolve_cut_frame_range(scene, cut, sorted_ms)
+        except Exception:
+            fs, fe = scene.frame_start, scene.frame_end
         inst_label = cut.instance_name or "(no instance)"
-        sub = base_dir + cut.name + os.sep
+        sub = base_dir + (cut.name or "?") + os.sep
+        # 絵文字を避けて ASCII で表示（古い Blender で稀にクラッシュ報告あり）
         col.label(
-            text=f"  🎬 {cut.name}  F{fs}-{fe}  →  {inst_label}  ({sub})",
+            text=f"  [{cut.name}]  F{fs}-{fe}  ->  {inst_label}",
+            icon="SEQUENCE",
         )
+        # 出力先パスは別行で（短く / clipping 対策）
+        col.label(text=f"    {sub}")
     if len(targets) > 12:
         col.label(text=f"  ... and {len(targets) - 12} more")
 
@@ -422,10 +429,17 @@ class KINEMA_OT_render_cuts(KinemaOperator):
     range_end: IntProperty(name="End Index", default=10, min=1)
 
     def invoke(self, context, event):  # noqa: ARG002
-        return context.window_manager.invoke_props_dialog(self, width=620)
+        try:
+            return context.window_manager.invoke_props_dialog(self, width=620)
+        except Exception as exc:
+            self.report({"ERROR"}, f"ダイアログ起動失敗: {exc}")
+            return {"CANCELLED"}
 
     def _resolve_targets(self, scene):
-        st = scene.kinema
+        try:
+            st = scene.kinema
+        except Exception:
+            return []
         cuts = list(st.cuts)
         if self.scope == "ACTIVE":
             idx = st.active_cut_index
@@ -444,15 +458,20 @@ class KINEMA_OT_render_cuts(KinemaOperator):
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "scope", text="対象")
-        if self.scope == "RANGE":
-            row = layout.row(align=True)
-            row.prop(self, "range_start")
-            row.prop(self, "range_end")
-        layout.separator()
-        scene = context.scene
-        targets = self._resolve_targets(scene)
-        _draw_cut_summary(layout, scene, targets, "Render Cuts")
+        try:
+            layout.prop(self, "scope", text="対象")
+            if self.scope == "RANGE":
+                row = layout.row(align=True)
+                row.prop(self, "range_start")
+                row.prop(self, "range_end")
+            layout.separator()
+            scene = context.scene
+            targets = self._resolve_targets(scene)
+            _draw_cut_summary(layout, scene, targets, "Render Cuts")
+        except Exception as exc:
+            # ダイアログ描画でクラッシュさせないために exception を握る
+            layout.label(text=f"描画エラー: {exc}", icon="ERROR")
+            print(f"[kinema:render_cuts] draw error: {exc}")
 
     def run(self, context):
         from ..ops import render_ops as _ro
@@ -494,16 +513,25 @@ class KINEMA_OT_render_active_cut(KinemaOperator):
     bl_description = "Active Cut だけを <base>/<cut_name>/ にレンダー（単発）"
 
     def invoke(self, context, event):  # noqa: ARG002
-        return context.window_manager.invoke_props_dialog(self, width=520)
+        try:
+            return context.window_manager.invoke_props_dialog(self, width=520)
+        except Exception as exc:
+            self.report({"ERROR"}, f"ダイアログ起動失敗: {exc}")
+            return {"CANCELLED"}
 
     def draw(self, context):
-        scene = context.scene
-        st = scene.kinema
-        idx = st.active_cut_index
-        if not (0 <= idx < len(st.cuts)):
-            self.layout.label(text="Cut が選択されていません", icon="ERROR")
-            return
-        _draw_cut_summary(self.layout, scene, [st.cuts[idx]], "Render Active Cut")
+        layout = self.layout
+        try:
+            scene = context.scene
+            st = scene.kinema
+            idx = st.active_cut_index
+            if not (0 <= idx < len(st.cuts)):
+                layout.label(text="Cut が選択されていません", icon="ERROR")
+                return
+            _draw_cut_summary(layout, scene, [st.cuts[idx]], "Render Active Cut")
+        except Exception as exc:
+            layout.label(text=f"描画エラー: {exc}", icon="ERROR")
+            print(f"[kinema:render_active_cut] draw error: {exc}")
 
     def run(self, context):
         from ..ops import render_ops as _ro

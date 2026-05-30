@@ -4,6 +4,30 @@
 
 ## [Unreleased]
 
+### Changed (UX)
+- **Cuts と Render を 1 セクションに統合**:
+  - 旧 Cuts box / Render box を 1 つの「Render」box にまとめ、ユーザーが
+    「何を / どこに / どう」出力するかを 1 箇所で完結できる構成に
+  - 構成: タイトル + キュー状態 → 出力設定（折り畳み）→ Cuts（折り畳み）
+    → Render Targets ボタン群（Instance / Cut カテゴリ別 2 行）
+  - Cuts サブセクションは List + Active Cut 編集に絞り、Render ボタンは
+    Render Targets に集約（重複ボタンの整理）
+
+### Fixed (crash hardening)
+- **render 系 handler のシグネチャ防御**: `kinema_render_init` /
+  `kinema_render_complete` / `kinema_render_cancel_clear` および
+  render_ops の `_on_render_complete` / `_on_render_cancel` を `*args` で
+  受けるよう変更。Blender バージョンによって `(scene)` / `(scene, depsgraph)`
+  のどちらでも呼ばれるため、引数不一致でのクラッシュを防ぐ
+- すべての render handler を `try/except` で囲み、handler 内で例外が出ても
+  Blender 全体をクラッシュさせず、状態フラグを確実にクリアする
+- **Render ダイアログ描画の防御**: `KINEMA_OT_render_cuts` / `_render_active_cut`
+  の `invoke` / `draw` を try/except で囲む。draw でエラーが出ても落ちずに
+  エラーラベルを出して継続
+- **Cut Render プレビュー表示の emoji 撤去**: 🎬 等の絵文字を ASCII + icon
+  に置き換え（古い Blender でクラッシュ報告のある Unicode を避ける）
+- `_resolve_cut_frame_range` の try/except 化（marker 状態が不安定でも落ちない）
+
 ### Removed (clean-up)
 - **`KINEMA_OT_duplicate_instance` の死骸コードを完全削除**:
   - beta2.x で登録は外していたが、クラス定義と関連 import が残っていた

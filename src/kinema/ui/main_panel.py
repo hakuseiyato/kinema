@@ -242,110 +242,8 @@ class KINEMA_PT_main(bpy.types.Panel):
             else:
                 layout.label(text="アクティブ Instance にカメラがありません", icon="ERROR")
 
-        # --- Cuts ---
-        _draw_cuts_section(layout, scene, st)
-
-        # --- Render ---
-        render_box = layout.box()
-        render_box.label(text="Render", icon="RENDER_ANIMATION")
-
-        # 出力設定（Blender 標準プロパティを kinema 上で編集可能に）
-        out_collapsed = st.render_output_collapsed
-        hdr = render_box.row(align=True)
-        hdr.prop(
-            st, "render_output_collapsed",
-            text="", emboss=False,
-            icon="TRIA_RIGHT" if out_collapsed else "TRIA_DOWN",
-        )
-        hdr.label(text="出力設定", icon="OUTPUT")
-        # 現在の解決後の拡張子も右側に表示（FFMPEG コンテナ変更が即反映される）
-        from ..ops.render_ops import _resolve_extension
-        cur_ext = _resolve_extension(scene) or "(none)"
-        hdr.label(text=f"ext: {cur_ext}")
-
-        if not out_collapsed:
-            r = scene.render
-            ims = r.image_settings
-            obox = render_box.box()
-            obox.use_property_split = True
-            obox.use_property_decorate = False
-
-            obox.prop(r, "filepath", text="Base")
-
-            col = obox.column(align=True)
-            col.prop(scene, "frame_start", text="Frame Start")
-            col.prop(scene, "frame_end", text="End")
-            col.prop(scene, "frame_step", text="Step")
-            obox.prop(r, "fps", text="FPS")
-
-            obox.separator()
-            # Blender 4.5+ の media_type があれば先に表示
-            if hasattr(ims, "media_type"):
-                obox.prop(ims, "media_type", text="Media Type")
-            obox.prop(ims, "file_format", text="Format")
-            fmt = ims.file_format
-            is_movie = (
-                getattr(ims, "media_type", None) == "MOVIE"
-                or fmt in {"FFMPEG", "AVI_JPEG", "AVI_RAW"}
-            )
-
-            if is_movie or fmt == "FFMPEG":
-                ff = r.ffmpeg
-                obox.prop(ff, "format", text="Container")
-                obox.prop(ff, "codec", text="Codec")
-                obox.prop(ff, "constant_rate_factor", text="Quality")
-                obox.prop(ff, "ffmpeg_preset", text="Encode Speed")
-            else:
-                # 静止画系
-                obox.prop(ims, "color_mode", text="Color")
-                if fmt in {"PNG", "JPEG", "TIFF", "OPEN_EXR", "OPEN_EXR_MULTILAYER"}:
-                    if hasattr(ims, "color_depth"):
-                        obox.prop(ims, "color_depth", text="Depth")
-                if fmt in {"JPEG", "JPEG2000", "WEBP"}:
-                    if hasattr(ims, "quality"):
-                        obox.prop(ims, "quality", text="Quality")
-                if fmt in {"PNG"}:
-                    if hasattr(ims, "compression"):
-                        obox.prop(ims, "compression", text="Compression")
-
-            obox.separator()
-            res = obox.column(align=True)
-            res.prop(r, "resolution_x", text="Resolution X")
-            res.prop(r, "resolution_y", text="Y")
-            res.prop(r, "resolution_percentage", text="%")
-
-        # enabled な Instance 件数を表示
-        n_enabled = sum(1 for i in st.instances if i.enabled)
-        render_box.label(
-            text=f"Enabled Instances: {n_enabled} / {len(st.instances)}",
-            icon="HIDE_OFF",
-        )
-        # キュー実行中のインジケータ + Cancel
-        from ..ops import render_ops as _render_ops
-        if _render_ops.is_queue_active():
-            qbox = render_box.box()
-            qbox.alert = True
-            qbox.label(
-                text=f"キュー実行中: 残り {_render_ops.queue_size()} 件",
-                icon="REC",
-            )
-            qbox.operator(
-                "kinema.cancel_render_queue",
-                text="Cancel Queue",
-                icon="CANCEL",
-            )
-        rrow = render_box.row(align=True)
-        rrow.enabled = not _render_ops.is_queue_active()
-        rrow.operator(
-            "kinema.render_selected_instances",
-            text="Selected",
-            icon="HIDE_OFF",
-        )
-        rrow.operator(
-            "kinema.render_active_instance",
-            text="Active Only",
-            icon="OUTLINER_OB_CAMERA",
-        )
+        # --- Render（Cuts + 出力設定 + Render ボタンを統合）---
+        _draw_render_section(layout, scene, st, context)
 
         # --- Import / Export ---
         io_box = layout.box()
@@ -600,9 +498,156 @@ def _kinema_handlers_active() -> bool:
     )
 
 
-def _draw_cuts_section(layout, scene, st) -> None:
-    """Cuts セクション。Timeline Marker と紐付くカット一覧を表示。"""
-    box = layout.box()
+def _draw_render_section(layout, scene, st, context) -> None:
+    """Render 統合セクション。
+
+    旧 Cuts + Render を 1 つの box にまとめて、ユーザーが
+    「何を / どこに / どう」出力するかを 1 箇所で完結できるようにする。
+
+    構成:
+      [Render]
+        ├ 出力設定 (折り畳み)         : filepath / format / fps / 解像度 ...
+        ├ Cuts     (折り畳み)         : UIList + Active Cut 編集 + Cut Render
+        ├ Render Targets              : Instance / Cuts ごとの起動ボタン
+        └ キュー状態 + Cancel
+    """
+    from ..ops import render_ops as _render_ops
+    from ..ops.render_ops import _resolve_extension
+
+    rbox = layout.box()
+    title_row = rbox.row(align=True)
+    title_row.label(text="Render", icon="RENDER_ANIMATION")
+    cur_ext = _resolve_extension(scene) or "(none)"
+    title_row.label(text=f"ext: {cur_ext}")
+
+    # キュー実行中インジケータ（最上部に出して目立たせる）
+    if _render_ops.is_queue_active():
+        qbox = rbox.box()
+        qbox.alert = True
+        qbox.label(
+            text=f"キュー実行中: 残り {_render_ops.queue_size()} 件",
+            icon="REC",
+        )
+        qbox.operator(
+            "kinema.cancel_render_queue", text="Cancel Queue", icon="CANCEL",
+        )
+
+    # ── 出力設定 サブセクション ──
+    _draw_render_output_subsection(rbox, scene, st)
+
+    # ── Cuts サブセクション ──
+    _draw_cuts_subsection(rbox, scene, st)
+
+    # ── Render Targets ボタン群 ──
+    rbox.separator()
+    targets_box = rbox.box()
+    targets_box.label(text="Render Targets", icon="OUTPUT")
+    targets_box.enabled = not _render_ops.is_queue_active()
+
+    # Instance ベース
+    n_enabled = sum(1 for i in st.instances if i.enabled)
+    inst_row = targets_box.row(align=True)
+    inst_row.label(
+        text=f"Instances ({n_enabled}/{len(st.instances)} enabled)",
+        icon="OUTLINER_OB_CAMERA",
+    )
+    inst_btns = targets_box.row(align=True)
+    inst_btns.operator(
+        "kinema.render_active_instance", text="Active Only",
+        icon="OUTLINER_OB_CAMERA",
+    )
+    inst_btns.operator(
+        "kinema.render_selected_instances", text="Enabled",
+        icon="HIDE_OFF",
+    )
+
+    # Cut ベース
+    n_cuts_enabled = sum(1 for c in st.cuts if c.enabled and not c.orphan)
+    cut_row = targets_box.row(align=True)
+    cut_row.label(
+        text=f"Cuts ({n_cuts_enabled}/{len(st.cuts)} enabled)",
+        icon="MARKER_HLT",
+    )
+    cut_btns = targets_box.row(align=True)
+    cut_btns.operator(
+        "kinema.render_active_cut", text="Active",
+        icon="RENDER_ANIMATION",
+    )
+    op_e = cut_btns.operator(
+        "kinema.render_cuts", text="Enabled", icon="HIDE_OFF",
+    )
+    op_e.scope = "ENABLED"
+    op_r = cut_btns.operator(
+        "kinema.render_cuts", text="Range...", icon="SEQUENCE",
+    )
+    op_r.scope = "RANGE"
+
+
+def _draw_render_output_subsection(parent_box, scene, st) -> None:
+    """出力設定（Blender 標準プロパティを kinema 上で編集可能に）。"""
+    out_collapsed = st.render_output_collapsed
+    hdr = parent_box.row(align=True)
+    hdr.prop(
+        st, "render_output_collapsed",
+        text="", emboss=False,
+        icon="TRIA_RIGHT" if out_collapsed else "TRIA_DOWN",
+    )
+    hdr.label(text="出力設定", icon="OUTPUT")
+
+    if out_collapsed:
+        return
+
+    r = scene.render
+    ims = r.image_settings
+    obox = parent_box.box()
+    obox.use_property_split = True
+    obox.use_property_decorate = False
+
+    obox.prop(r, "filepath", text="Base")
+
+    col = obox.column(align=True)
+    col.prop(scene, "frame_start", text="Frame Start")
+    col.prop(scene, "frame_end", text="End")
+    col.prop(scene, "frame_step", text="Step")
+    obox.prop(r, "fps", text="FPS")
+
+    obox.separator()
+    if hasattr(ims, "media_type"):
+        obox.prop(ims, "media_type", text="Media Type")
+    obox.prop(ims, "file_format", text="Format")
+    fmt = ims.file_format
+    is_movie = (
+        getattr(ims, "media_type", None) == "MOVIE"
+        or fmt in {"FFMPEG", "AVI_JPEG", "AVI_RAW"}
+    )
+    if is_movie or fmt == "FFMPEG":
+        ff = r.ffmpeg
+        obox.prop(ff, "format", text="Container")
+        obox.prop(ff, "codec", text="Codec")
+        obox.prop(ff, "constant_rate_factor", text="Quality")
+        obox.prop(ff, "ffmpeg_preset", text="Encode Speed")
+    else:
+        obox.prop(ims, "color_mode", text="Color")
+        if fmt in {"PNG", "JPEG", "TIFF", "OPEN_EXR", "OPEN_EXR_MULTILAYER"}:
+            if hasattr(ims, "color_depth"):
+                obox.prop(ims, "color_depth", text="Depth")
+        if fmt in {"JPEG", "JPEG2000", "WEBP"}:
+            if hasattr(ims, "quality"):
+                obox.prop(ims, "quality", text="Quality")
+        if fmt in {"PNG"}:
+            if hasattr(ims, "compression"):
+                obox.prop(ims, "compression", text="Compression")
+
+    obox.separator()
+    res = obox.column(align=True)
+    res.prop(r, "resolution_x", text="Resolution X")
+    res.prop(r, "resolution_y", text="Y")
+    res.prop(r, "resolution_percentage", text="%")
+
+
+def _draw_cuts_subsection(parent_box, scene, st) -> None:
+    """Cuts サブセクション（旧 _draw_cuts_section を Render box 配下に組替）。"""
+    box = parent_box.box()
     collapsed = st.cuts_collapsed
     hdr = box.row(align=True)
     hdr.prop(
@@ -623,24 +668,11 @@ def _draw_cuts_section(layout, scene, st) -> None:
     if collapsed:
         return
 
-    # Sync + Render 行
-    tools_row = box.row(align=True)
-    tools_row.operator(
-        "kinema.sync_cuts_from_markers", text="Sync from Markers", icon="FILE_REFRESH",
+    # Sync ボタン（Render 系は下の Render Targets に統合済み）
+    box.operator(
+        "kinema.sync_cuts_from_markers",
+        text="Sync from Markers", icon="FILE_REFRESH",
     )
-    # Render は scope ごとにボタンを並べる
-    render_row = box.row(align=True)
-    render_row.operator(
-        "kinema.render_active_cut", text="Active", icon="RENDER_ANIMATION",
-    )
-    op_e = render_row.operator(
-        "kinema.render_cuts", text="Enabled", icon="HIDE_OFF",
-    )
-    op_e.scope = "ENABLED"
-    op_r = render_row.operator(
-        "kinema.render_cuts", text="Range...", icon="SEQUENCE",
-    )
-    op_r.scope = "RANGE"
 
     # リスト
     list_row = box.row()

@@ -51,29 +51,41 @@ def kinema_depsgraph_update_post(scene, depsgraph):  # noqa: ARG001
 
 
 @persistent
-def kinema_render_init(scene):  # noqa: ARG001
+def kinema_render_init(*args):  # noqa: ARG001
     """レンダージョブ開始時（animation render なら 1 回だけ）。
 
     dispatcher を render モードに切替え、depsgraph_update_post の dispatch
     を skip + _apply_preview_preset を skip して per-frame overhead を削減。
-    `render_pre/post` はフレームごとに発火するので使わない。
+
+    シグネチャ防御: Blender バージョンによって `(scene)` または
+    `(scene, depsgraph)` で呼ばれるので `*args` で受ける（引数不一致での
+    クラッシュ防止）。
     """
-    instance_dispatcher.set_rendering(True)
+    try:
+        instance_dispatcher.set_rendering(True)
+    except Exception as exc:
+        print(f"[kinema] render_init error: {exc}")
 
 
 @persistent
-def kinema_render_complete(scene):  # noqa: ARG001
+def kinema_render_complete(*args):  # noqa: ARG001
     """レンダージョブ完了時。render モード解除。"""
-    instance_dispatcher.set_rendering(False)
+    try:
+        instance_dispatcher.set_rendering(False)
+    except Exception as exc:
+        print(f"[kinema] render_complete error: {exc}")
 
 
 @persistent
-def kinema_render_cancel_clear(scene):  # noqa: ARG001
+def kinema_render_cancel_clear(*args):  # noqa: ARG001
     """Esc 等でキャンセルされた場合も render モードを解除する。
 
     関数名が render_ops 側の _on_render_cancel と被らないように _clear を付与。
     """
-    instance_dispatcher.set_rendering(False)
+    try:
+        instance_dispatcher.set_rendering(False)
+    except Exception as exc:
+        print(f"[kinema] render_cancel error: {exc}")
 
 
 @persistent

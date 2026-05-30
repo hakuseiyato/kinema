@@ -144,24 +144,38 @@ def _sample_output_path(scene, base_dir: str, inst_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 @persistent
-def _on_render_complete(scene):
-    """1 件の render 終了 → 次のキューを timer で起動。"""
-    if not _render_active:
-        return  # kinema 由来でないレンダー完了は無視
-    if not _render_queue:
-        # 全部完了 → 復元 & handler 解除
-        _finalize(scene, reason="complete")
-        return
-    bpy.app.timers.register(_start_next_render, first_interval=0.2)
+def _on_render_complete(*args):
+    """1 件の render 終了 → 次のキューを timer で起動。
+
+    シグネチャ防御: Blender バージョンで `(scene)` / `(scene, depsgraph)`
+    のどちらも来うるため `*args` で受ける。
+    """
+    scene = args[0] if args else None
+    try:
+        if not _render_active:
+            return  # kinema 由来でないレンダー完了は無視
+        if not _render_queue:
+            # 全部完了 → 復元 & handler 解除
+            _finalize(scene, reason="complete")
+            return
+        bpy.app.timers.register(_start_next_render, first_interval=0.2)
+    except Exception as exc:
+        print(f"[kinema:render] render_complete handler error: {exc}")
+        _force_clear_state()
 
 
 @persistent
-def _on_render_cancel(scene):
+def _on_render_cancel(*args):
     """ユーザーが Esc 等でキャンセルしたら キュー全破棄 + 復元。"""
-    if not _render_active:
-        return
-    _render_queue.clear()
-    _finalize(scene, reason="cancel")
+    scene = args[0] if args else None
+    try:
+        if not _render_active:
+            return
+        _render_queue.clear()
+        _finalize(scene, reason="cancel")
+    except Exception as exc:
+        print(f"[kinema:render] render_cancel handler error: {exc}")
+        _force_clear_state()
 
 
 def _finalize(scene, reason: str) -> None:
