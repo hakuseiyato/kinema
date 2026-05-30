@@ -32,9 +32,13 @@ from ._base import KinemaOperator
 # キュー状態（モジュールレベル）
 # ---------------------------------------------------------------------------
 
-# キュー要素: (subfolder_path, camera_obj, label[, frame_start, frame_end])
+# キュー要素: (subfolder_path, camera_NAME, label[, frame_start, frame_end])
+#   **重要**: camera は **必ず名前 (str) で保持** する。Object 直接参照を
+#   Python 側で長期保持すると Blender 内部の Object 移動/解放で stale 化し、
+#   後で scene.camera に代入したときに depsgraph rebuild が NULL を辿って
+#   クラッシュする（実例: 2026-05 の DepsgraphNodeBuilder::add_id_node NULL deref）。
 _render_queue: list = []
-# 元の設定を保存（キュー終了時に復元）
+# 元の設定を保存（キュー終了時に復元）。camera_name で保持。
 _render_saved: dict = {}
 # 現在キュー実行中フラグ
 _render_active: bool = False
@@ -188,8 +192,15 @@ def _finalize(scene, reason: str) -> None:
         try:
             if "filepath" in _render_saved:
                 scene.render.filepath = _render_saved["filepath"]
-            if "camera" in _render_saved:
-                scene.camera = _render_saved["camera"]
+            if "camera_name" in _render_saved:
+                # 名前で復元（stale Object ポインタ回避）
+                cam_name = _render_saved["camera_name"]
+                if cam_name:
+                    restored = bpy.data.objects.get(cam_name)
+                    if restored is not None and restored.type == "CAMERA":
+                        scene.camera = restored
+                else:
+                    scene.camera = None
             if "frame_start" in _render_saved:
                 scene.frame_start = _render_saved["frame_start"]
             if "frame_end" in _render_saved:
@@ -233,36 +244,35 @@ def _resolve_queue_scene():
 def _start_next_render():
     """timer から呼ばれて、INVOKE_DEFAULT で render を開始。
 
-    キューアイテム形式は次の 2 種類をサポート:
-      - (sub_dir, camera, label)                          : 既定 frame range を使う
-      - (sub_dir, camera, label, frame_start, frame_end)  : 当該レンダーだけ範囲上書き
+    キューアイテム形式は次の 2 種類をサポート（camera は **名前 str** で保持）:
+      - (sub_dir, camera_name, label)                          : 既定 frame range
+      - (sub_dir, camera_name, label, frame_start, frame_end)  : 範囲上書き
     """
     if not _render_queue:
         return None
     scene = _resolve_queue_scene()
     if scene is None:
-        # Scene が消えた → キューを破棄して終了（context.scene へのフォールバック
-        # は危険なのでしない）
         print("[kinema:render] target scene missing, aborting queue")
         _render_queue.clear()
-        # finalize は scene が無いと一部復元できないが、フラグ解除だけ確実に
         _force_clear_state()
         return None
     item = _render_queue.pop(0)
     try:
         if len(item) == 5:
-            sub_dir, camera, label, fs, fe = item
+            sub_dir, camera_name, label, fs, fe = item
         else:
-            sub_dir, camera, label = item
+            sub_dir, camera_name, label = item
             fs, fe = None, None
     except Exception as exc:
         print(f"[kinema:render] malformed queue item: {exc}")
         _force_clear_state()
         return None
     try:
-        # Camera が削除されていないか / Camera 型かを再確認
+        # **重要**: 名前から Camera を解決する（直接保持していた Object は
+        # Blender 内部で stale 化して NULL deref クラッシュを起こすため）
+        camera = bpy.data.objects.get(camera_name) if camera_name else None
         if camera is None or getattr(camera, "type", None) != "CAMERA":
-            print(f"[kinema:render] skipping '{label}': camera invalid")
+            print(f"[kinema:render] skipping '{label}': camera '{camera_name}' missing/invalid")
             # 次のキューを試す
             bpy.app.timers.register(_start_next_render, first_interval=0.1)
             return None
@@ -277,7 +287,6 @@ def _start_next_render():
         bpy.ops.render.render("INVOKE_DEFAULT", animation=True)
     except Exception as exc:
         print(f"[kinema:render] error starting render: {exc}")
-        # エラーで次が動かないと困るので強制完了扱い
         _finalize(scene, reason=f"error: {exc}")
     return None  # timer は一度きり
 
@@ -315,12 +324,34 @@ def _register_handlers():
             hook_list.append(fn)
 
 
+def _normalize_camera_in_item(item) -> tuple | None:
+    """queue item の camera フィールドを必ず str (名前) に正規化する。
+
+    呼出側が Object を渡してきたケースを救う。Object なら .name を取り出す。
+    既に str なら素通し。解決失敗なら None を返す（キューから除外する想定）。
+    """
+    try:
+        if len(item) == 5:
+            sub_dir, cam, label, fs, fe = item
+            cam_name = cam if isinstance(cam, str) else getattr(cam, "name", None)
+            if not cam_name:
+                return None
+            return (sub_dir, cam_name, label, int(fs), int(fe))
+        sub_dir, cam, label = item
+        cam_name = cam if isinstance(cam, str) else getattr(cam, "name", None)
+        if not cam_name:
+            return None
+        return (sub_dir, cam_name, label)
+    except Exception:
+        return None
+
+
 def _kickoff_queue(scene, queue_items: list) -> bool:
     """キューを積んで最初の render を起動。
 
-    queue_items の各要素は 3-tuple か 5-tuple:
-      - (sub_dir, camera, label)
-      - (sub_dir, camera, label, frame_start, frame_end)
+    queue_items の各要素は camera フィールドが Object でも name でも OK。
+    `_normalize_camera_in_item` で内部的に必ず name 文字列に変換する。
+    （Object 直接保持は stale ポインタクラッシュの原因）
     戻り値: 起動できたら True。
     """
     global _render_active, _render_scene_name
@@ -329,14 +360,30 @@ def _kickoff_queue(scene, queue_items: list) -> bool:
     if not queue_items:
         return False
 
+    normalized: list = []
+    dropped = 0
+    for item in queue_items:
+        norm = _normalize_camera_in_item(item)
+        if norm is None:
+            dropped += 1
+            continue
+        normalized.append(norm)
+    if dropped:
+        print(f"[kinema:render] kickoff: dropped {dropped} item(s) (invalid camera)")
+    if not normalized:
+        print("[kinema:render] kickoff: no valid items, abort")
+        return False
+
     _render_saved.clear()
     _render_saved["filepath"] = scene.render.filepath
-    _render_saved["camera"] = scene.camera
+    # camera は名前で保存（Object 直接保持は stale ポインタクラッシュ要因）
+    cur_cam = scene.camera
+    _render_saved["camera_name"] = cur_cam.name if cur_cam is not None else ""
     _render_saved["frame_start"] = scene.frame_start
     _render_saved["frame_end"] = scene.frame_end
 
     _render_queue.clear()
-    _render_queue.extend(queue_items)
+    _render_queue.extend(normalized)
     _register_handlers()
     _render_active = True
     _render_scene_name = scene.name  # timer 内では名前で解決する

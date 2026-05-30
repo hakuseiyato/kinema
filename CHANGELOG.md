@@ -14,6 +14,20 @@
     Render Targets に集約（重複ボタンの整理）
 
 ### Fixed (crash hardening)
+- **【重大】レンダーキュー内 `bpy.types.Object` 直接保持を撤廃**:
+  - 症状: `kinema.render_cuts(scope='ENABLED')` 後、Blender が
+    `DepsgraphNodeBuilder::add_id_node` で NULL ポインタを参照してクラッシュ
+    (EXCEPTION_ACCESS_VIOLATION, 0x28 read)
+  - 原因: `_render_queue` と `_render_saved["camera"]` に Object 直接参照
+    を長期保持していた。Blender 内部で Object の C 構造体が移動／解放されると
+    Python ラッパー側のポインタが stale 化し、後で `scene.camera = stale_obj`
+    した瞬間に depsgraph rebuild が NULL を辿って死ぬ
+  - 修正: queue / saved state ともに camera は **名前 (str)** で保持し、
+    使う時に `bpy.data.objects.get(name)` で都度解決する形に変更
+    - `_normalize_camera_in_item()` で呼出側が Object を渡してきても
+      自動的に name 変換（後方互換性維持）
+    - `_render_saved["camera"]` → `_render_saved["camera_name"]`
+    - 解決時に camera が消えていたら当該アイテムを skip して次へ
 - **render 系 handler のシグネチャ防御**: `kinema_render_init` /
   `kinema_render_complete` / `kinema_render_cancel_clear` および
   render_ops の `_on_render_complete` / `_on_render_cancel` を `*args` で
