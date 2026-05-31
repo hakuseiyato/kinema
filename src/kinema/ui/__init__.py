@@ -17,8 +17,16 @@ _CLASSES = (
 
 
 def register() -> None:
+    """Panel / UIList を登録。失敗時は Console にエラーログを出し、残りは継続登録。"""
     for cls in _CLASSES:
-        bpy.utils.register_class(cls)
+        try:
+            try:
+                bpy.utils.unregister_class(cls)
+            except Exception:
+                pass
+            bpy.utils.register_class(cls)
+        except Exception as exc:
+            print(f"[kinema:ui] register_class FAILED for {cls.__name__}: {exc}")
 
 
 def unregister() -> None:

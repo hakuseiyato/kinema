@@ -34,13 +34,30 @@ _CLASSES = (
 
 
 def register() -> None:
+    """PropertyGroup を登録。失敗時は Console にログ。"""
     for cls in _CLASSES:
-        bpy.utils.register_class(cls)
-    bpy.types.Scene.kinema = bpy.props.PointerProperty(type=scene_settings.KinemaSceneSettings)
-    bpy.types.Camera.kinema_preset = bpy.props.PointerProperty(
-        type=camera_preset.KinemaCameraPreset,
-    )
-    wm_settings.register()
+        try:
+            try:
+                bpy.utils.unregister_class(cls)
+            except Exception:
+                pass
+            bpy.utils.register_class(cls)
+        except Exception as exc:
+            print(f"[kinema:data] register_class FAILED for {cls.__name__}: {exc}")
+    try:
+        bpy.types.Scene.kinema = bpy.props.PointerProperty(type=scene_settings.KinemaSceneSettings)
+    except Exception as exc:
+        print(f"[kinema:data] Scene.kinema register FAILED: {exc}")
+    try:
+        bpy.types.Camera.kinema_preset = bpy.props.PointerProperty(
+            type=camera_preset.KinemaCameraPreset,
+        )
+    except Exception as exc:
+        print(f"[kinema:data] Camera.kinema_preset register FAILED: {exc}")
+    try:
+        wm_settings.register()
+    except Exception as exc:
+        print(f"[kinema:data] wm_settings register FAILED: {exc}")
 
 
 def unregister() -> None:

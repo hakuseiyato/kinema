@@ -75,8 +75,21 @@ _CLASSES = (
 
 
 def register() -> None:
+    """各 Operator を登録。1 件失敗しても残りは登録継続 + Console にエラーログ。
+
+    旧 class が registry に残っていて register が衝突するケースは pre-unregister
+    で対処する。
+    """
     for cls in _CLASSES:
-        bpy.utils.register_class(cls)
+        try:
+            # 旧バージョンの class が残っている場合は pre-unregister して衝突回避
+            try:
+                bpy.utils.unregister_class(cls)
+            except Exception:
+                pass
+            bpy.utils.register_class(cls)
+        except Exception as exc:
+            print(f"[kinema:ops] register_class FAILED for {cls.__name__}: {exc}")
 
 
 def unregister() -> None:

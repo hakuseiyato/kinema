@@ -56,19 +56,49 @@ def register():
     if not _HAS_BPY:
         return
     import bpy
-    from . import preferences, data, ops, ui  # noqa: PLC0415
+    print("[kinema] register starting...")
+    try:
+        from . import preferences, data, ops, ui  # noqa: PLC0415
+    except Exception as exc:
+        print(f"[kinema] FATAL: import failed: {exc}")
+        import traceback
+        traceback.print_exc()
+        return
     if _REGISTERED:
         # 多重 register 防止（Reload Scripts で Disable→Enable を踏み外した場合）
         try:
             unregister()
         except Exception:
             pass
-    bpy.utils.register_class(preferences.KinemaPreferences)
-    data.register()
-    ops.register()
-    ui.register()
+    try:
+        try:
+            bpy.utils.unregister_class(preferences.KinemaPreferences)
+        except Exception:
+            pass
+        bpy.utils.register_class(preferences.KinemaPreferences)
+    except Exception as exc:
+        print(f"[kinema] preferences register FAILED: {exc}")
+    try:
+        data.register()
+    except Exception as exc:
+        print(f"[kinema] data.register FAILED: {exc}")
+        import traceback
+        traceback.print_exc()
+    try:
+        ops.register()
+    except Exception as exc:
+        print(f"[kinema] ops.register FAILED: {exc}")
+        import traceback
+        traceback.print_exc()
+    try:
+        ui.register()
+    except Exception as exc:
+        print(f"[kinema] ui.register FAILED: {exc}")
+        import traceback
+        traceback.print_exc()
     bpy.app.timers.register(_deferred_setup, first_interval=0.1)
     _REGISTERED = True
+    print("[kinema] register completed")
 
 
 def unregister():
