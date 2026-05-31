@@ -15,7 +15,7 @@ from bpy.props import (
 )
 
 from ..config import constants as C
-from . import preset_item, instance_item, cut_item
+from . import preset_item, instance_item, cut_item, shot_item
 
 
 def _select_only_object(context, obj):
@@ -178,12 +178,30 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
         update=_on_active_instance_changed,
     )
 
-    # --- Cut 一覧（Timeline Marker と紐付くカット情報）---
+    # --- Cut 一覧（旧 schema、Phase 2 で削除予定）---
     cuts: CollectionProperty(type=cut_item.KinemaCut)
     active_cut_index: IntProperty(
         name="Active Cut",
         default=0,
         update=_on_active_cut_changed,
+    )
+
+    # --- Shot 一覧（新統合 schema, Phase 1）---
+    # Timeline Marker × カメラ × 出演 Cast を統合管理する新エンティティ
+    shots: CollectionProperty(type=shot_item.KinemaShot)
+    active_shot_index: IntProperty(
+        name="Active Shot",
+        default=0,
+        # update callback は Phase 2 で _on_active_shot_changed を追加（自動 jump）
+    )
+
+    # データフォーマットバージョン
+    # 1 = 旧 (cuts[] と yato_vis.cast_markers が canonical)
+    # 2 = 新 (shots[] が canonical、cuts[] / cast_markers は Phase 2 で削除)
+    data_format_version: IntProperty(
+        name="Data Format Version",
+        description="kinema scene データのスキーマ世代",
+        default=1,
     )
 
     # --- 動作 ---

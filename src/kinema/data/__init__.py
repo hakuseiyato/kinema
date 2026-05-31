@@ -10,7 +10,15 @@ from __future__ import annotations
 
 import bpy
 
-from . import preset_item, instance_item, scene_settings, wm_settings, camera_preset, cut_item
+from . import (
+    preset_item,
+    instance_item,
+    scene_settings,
+    wm_settings,
+    camera_preset,
+    cut_item,
+    shot_item,
+)
 
 
 _CLASSES = (
@@ -19,6 +27,8 @@ _CLASSES = (
     instance_item.KinemaInstanceItem,
     camera_preset.KinemaCameraPreset,
     cut_item.KinemaCut,
+    shot_item.KinemaShotCastEntry,
+    shot_item.KinemaShot,
     scene_settings.KinemaSceneSettings,
 )
 

@@ -20,6 +20,7 @@ from . import (
     render_ops,
     cut_ops,
     repair_ops,
+    shot_ops,
 )
 
 
@@ -69,6 +70,16 @@ _CLASSES = (
     cut_ops.KINEMA_OT_render_cuts,
     cut_ops.KINEMA_OT_diagnose_cut_binding,
     repair_ops.KINEMA_OT_repair_scene,
+    # Phase 1 Shot Ops
+    shot_ops.KINEMA_OT_migrate_to_shots,
+    shot_ops.KINEMA_OT_sync_shots_from_markers,
+    shot_ops.KINEMA_OT_add_shot,
+    shot_ops.KINEMA_OT_remove_shot,
+    shot_ops.KINEMA_OT_move_shot,
+    shot_ops.KINEMA_OT_rename_shot,
+    shot_ops.KINEMA_OT_jump_to_shot,
+    shot_ops.KINEMA_OT_shot_cast_toggle,
+    shot_ops.KINEMA_OT_diagnose_shots,
 )
 
 
