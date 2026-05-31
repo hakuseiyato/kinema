@@ -67,6 +67,7 @@ _CLASSES = (
     cut_ops.KINEMA_OT_rename_cut,
     cut_ops.KINEMA_OT_jump_to_cut,
     cut_ops.KINEMA_OT_render_cuts,
+    cut_ops.KINEMA_OT_diagnose_cut_binding,
     repair_ops.KINEMA_OT_repair_scene,
 )
 

@@ -58,12 +58,43 @@ def _resolve_cut_frame_range(scene, cut, sorted_markers) -> tuple[int, int]:
 
 
 def _find_instance_by_camera(st, camera_obj):
-    """Instance リストから camera_ref が一致するものの name を返す。無ければ ""。"""
+    """Instance リストから camera_ref が一致するものの name を返す。無ければ ""。
+
+    マッチング順:
+      1. Python 識別子 (`is`) — 同じラッパー
+      2. **camera.name による比較** — Blender が別ラッパーを返すケースの救済
+         （これが今回の「正しくバインド読めない」の主因だった）
+    """
     if camera_obj is None:
         return ""
+    try:
+        target_name = camera_obj.name
+    except Exception:
+        return ""
     for inst in st.instances:
-        if refs.safe_object(inst.camera_ref) is camera_obj:
+        cam = refs.safe_object(inst.camera_ref)
+        if cam is None:
+            continue
+        if cam is camera_obj:
             return inst.name
+        try:
+            if cam.name == target_name:
+                return inst.name
+        except Exception:
+            continue
+    return ""
+
+
+def _find_instance_by_name(st, name: str) -> str:
+    """Cut 名や Marker 名に同じ名前の Instance があれば紐付ける（最終フォールバック）。"""
+    if not name:
+        return ""
+    for inst in st.instances:
+        try:
+            if inst.name == name:
+                return inst.name
+        except Exception:
+            continue
     return ""
 
 
@@ -87,6 +118,29 @@ class KINEMA_OT_sync_cuts_from_markers(KinemaOperator):
         "Marker が消えた Cut は orphan としてマークし保持"
     )
 
+    force_rebind: bpy.props.BoolProperty(
+        name="Force Rebind (overwrite existing instance_name)",
+        description=(
+            "既に instance_name がセットされている Cut でも、Marker.camera から"
+            "改めてバインドし直す。Cut の Instance 紐付が崩れている時に使う"
+        ),
+        default=False,
+    )
+
+    def invoke(self, context, event):  # noqa: ARG002
+        return context.window_manager.invoke_props_dialog(self, width=460)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "force_rebind")
+        layout.separator()
+        layout.label(text="バインド解決順:", icon="INFO")
+        col = layout.column(align=True)
+        col.scale_y = 0.85
+        col.label(text="  1. Marker.camera → Instance.camera_ref (識別子)")
+        col.label(text="  2. Marker.camera.name → Instance.camera_ref.name")
+        col.label(text="  3. Marker.name → Instance.name (同名フォールバック)")
+
     def run(self, context):
         scene = context.scene
         st = scene.kinema
@@ -97,7 +151,10 @@ class KINEMA_OT_sync_cuts_from_markers(KinemaOperator):
 
         added = 0
         adopted = 0
-        orphaned = 0
+        bound = 0
+        rebound = 0
+        no_marker_cam = 0  # marker.camera が None だった件数
+        unresolved = 0     # camera あったが Instance に該当無し
 
         # 1) 全 Cut を一旦 orphan 候補にする → 後で Marker が見つかった Cut だけ復帰
         for c in st.cuts:
@@ -122,16 +179,37 @@ class KINEMA_OT_sync_cuts_from_markers(KinemaOperator):
                 c.marker_name = m.name
                 added += 1
             c.orphan = False
-            # instance_name 未設定で marker.camera が指定されていれば補完
-            if not c.instance_name:
-                try:
-                    cam_obj = getattr(m, "camera", None)
-                except Exception:
-                    cam_obj = None
-                if cam_obj is not None:
-                    inst_name = _find_instance_by_camera(st, cam_obj)
-                    if inst_name:
-                        c.instance_name = inst_name
+
+            # instance_name の解決（force_rebind ON なら既存も上書き）
+            need_bind = self.force_rebind or not c.instance_name
+            if not need_bind:
+                continue
+
+            try:
+                cam_obj = getattr(m, "camera", None)
+            except Exception:
+                cam_obj = None
+
+            # 解決順 1+2: marker.camera 経由（識別子 → name）
+            resolved_inst = ""
+            if cam_obj is not None:
+                resolved_inst = _find_instance_by_camera(st, cam_obj)
+                if not resolved_inst:
+                    unresolved += 1
+            else:
+                no_marker_cam += 1
+
+            # 解決順 3: marker.name と同名の Instance（フォールバック）
+            if not resolved_inst:
+                resolved_inst = _find_instance_by_name(st, m.name)
+
+            if resolved_inst:
+                was = c.instance_name
+                c.instance_name = resolved_inst
+                if was and was != resolved_inst:
+                    rebound += 1
+                else:
+                    bound += 1
 
         # 3) orphan の残りをカウント（削除はしない）
         orphaned = sum(1 for c in st.cuts if c.orphan)
@@ -145,6 +223,14 @@ class KINEMA_OT_sync_cuts_from_markers(KinemaOperator):
             parts.append(f"+{added} added")
         if adopted:
             parts.append(f"{adopted} adopted")
+        if bound:
+            parts.append(f"{bound} bound")
+        if rebound:
+            parts.append(f"{rebound} rebound")
+        if no_marker_cam:
+            parts.append(f"{no_marker_cam} marker w/o camera")
+        if unresolved:
+            parts.append(f"{unresolved} unresolved")
         if orphaned:
             parts.append(f"{orphaned} orphan")
         msg = ", ".join(parts) if parts else "no change"
@@ -288,6 +374,49 @@ class KINEMA_OT_rename_cut(KinemaOperator):
 # ---------------------------------------------------------------------------
 # Cut → Camera / Frame ジャンプ
 # ---------------------------------------------------------------------------
+
+class KINEMA_OT_diagnose_cut_binding(KinemaOperator):
+    """全 Cut のバインド状態を System Console にダンプ。
+
+    なぜ instance_name が空 / 誤バインドなのかの調査に使う。
+    """
+    bl_idname = "kinema.diagnose_cut_binding"
+    bl_label = "Diagnose Cut Binding"
+    bl_description = "全 Cut の Marker / Camera / Instance 紐付け状態を System Console にダンプ"
+
+    def run(self, context):
+        scene = context.scene
+        st = scene.kinema
+        print("=" * 60)
+        print(f"[kinema:cut-diag] {len(st.cuts)} cuts")
+        print(f"[kinema:cut-diag] {len(st.instances)} instances")
+        # Instance name → camera name の表
+        print("--- Instances ---")
+        for i, inst in enumerate(st.instances):
+            cam = refs.safe_object(inst.camera_ref)
+            cam_name = cam.name if cam is not None else "(no cam)"
+            print(f"  #{i+1} '{inst.name}' → camera='{cam_name}'")
+        # Cut 一覧 + Marker.camera 状態
+        print("--- Cuts vs Markers ---")
+        for i, cut in enumerate(st.cuts):
+            marker = scene.timeline_markers.get(cut.marker_name)
+            if marker is None:
+                marker_info = f"NO MARKER ('{cut.marker_name}')"
+            else:
+                try:
+                    mc = marker.camera
+                except Exception:
+                    mc = None
+                mc_name = mc.name if mc is not None else "(no camera)"
+                marker_info = f"marker f{marker.frame} cam='{mc_name}'"
+            print(
+                f"  #{i+1} cut='{cut.name}' marker='{cut.marker_name}' "
+                f"instance='{cut.instance_name or '(empty)'}' orphan={cut.orphan} | {marker_info}"
+            )
+        print("=" * 60)
+        self.report({"INFO"}, "Cut バインド診断を System Console にダンプしました")
+        return {"FINISHED"}
+
 
 class KINEMA_OT_jump_to_cut(KinemaOperator):
     """Active Cut の frame_start に jump し、紐付き Instance のカメラに切替。"""

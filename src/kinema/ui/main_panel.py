@@ -681,10 +681,15 @@ def _draw_cuts_subsection(parent_box, scene, st) -> None:
     if collapsed:
         return
 
-    # Sync ボタン（Render 系は下の Render Targets に統合済み）
-    box.operator(
+    # Sync + Diagnose 行
+    tools_row = box.row(align=True)
+    tools_row.operator(
         "kinema.sync_cuts_from_markers",
         text="Sync from Markers", icon="FILE_REFRESH",
+    )
+    tools_row.operator(
+        "kinema.diagnose_cut_binding",
+        text="", icon="VIEWZOOM",
     )
 
     # リスト
