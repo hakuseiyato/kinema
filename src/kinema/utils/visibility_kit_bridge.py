@@ -149,23 +149,29 @@ def import_vk_cast_ops():
     return None
 
 
-def request_bake_for_group(scene, group_name: str) -> bool:
+def request_bake_for_group(scene, group_name: str, force: bool = False) -> bool:
     """指定 Group の visibility を shots[] に基づいて bake する。
 
     kinema.shots[N].cast 変更時の update callback から呼ぶ。
     yato_vis が無ければ no-op。bake 中の再帰防止はモジュール変数で。
+
+    `force=True`: yato_vis.cast_auto_bake が OFF でも強制 bake（明示ボタン用）。
+    silent fail パスは全て System Console にログを出して原因切り分け可能に。
     """
-    global _bake_in_progress  # ← 関数の冒頭で宣言（PEP 規約）
+    global _bake_in_progress
     st = get_settings(scene)
     if st is None:
+        print(f"[kinema:vkb] skip bake '{group_name}': yato_vis 未登録")
         return False
-    if not getattr(st, "cast_auto_bake", True):
-        return False  # ユーザーが auto_bake OFF にしている
+    if not force and not getattr(st, "cast_auto_bake", True):
+        print(f"[kinema:vkb] skip bake '{group_name}': cast_auto_bake が OFF")
+        return False
     if _bake_in_progress:
-        return False  # 再帰防止
-    if not group_name:
+        print(f"[kinema:vkb] skip bake '{group_name}': 再帰中")
         return False
-    # 対象 Group を探す
+    if not group_name:
+        print("[kinema:vkb] skip bake: group_name が空")
+        return False
     target = None
     for g in list_groups(scene):
         try:
@@ -175,17 +181,25 @@ def request_bake_for_group(scene, group_name: str) -> bool:
         except Exception:
             continue
     if target is None:
+        print(f"[kinema:vkb] skip bake '{group_name}': yato_vis.groups に該当無し")
         return False
     cast_ops_mod = import_vk_cast_ops()
     if cast_ops_mod is None or not hasattr(cast_ops_mod, "bake_group_cast"):
-        print("[kinema:vkb] yato_visibility_kit.ops.cast_ops が import 不能")
+        print(f"[kinema:vkb] skip bake '{group_name}': cast_ops module import 不能")
         return False
     try:
         _bake_in_progress = True
-        cast_ops_mod.bake_group_cast(scene, target)
+        result = cast_ops_mod.bake_group_cast(scene, target)
+        if isinstance(result, tuple) and len(result) >= 2:
+            cleared, inserted = result[0], result[1]
+            print(f"[kinema:vkb] bake '{group_name}': cleared {cleared}, inserted {inserted}")
+        else:
+            print(f"[kinema:vkb] bake '{group_name}': done")
         return True
     except Exception as exc:
-        print(f"[kinema:vkb] bake request failed for '{group_name}': {exc}")
+        print(f"[kinema:vkb] bake FAILED for '{group_name}': {exc}")
+        import traceback
+        traceback.print_exc()
         return False
     finally:
         _bake_in_progress = False

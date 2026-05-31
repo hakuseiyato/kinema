@@ -611,8 +611,9 @@ class KINEMA_OT_shot_cast_toggle(KinemaOperator):
             ce.enabled = True
             action = "ON"
         # 明示的に bake トリガ（add/remove 両方で確実に bake する）
+        # force=True: ユーザー操作なので cast_auto_bake の OFF も上書きして bake
         try:
-            _vkb.request_bake_for_group(scene, self.group_name)
+            _vkb.request_bake_for_group(scene, self.group_name, force=True)
         except Exception as exc:
             print(f"[kinema:shot_cast] bake failed: {exc}")
         # viewport 即時反映のため frame 再評価
@@ -678,10 +679,10 @@ class KINEMA_OT_shot_cast_clear(KinemaOperator):
         # 削除対象 group_name を控えてから clear
         affected_groups = [ce.group_name for ce in shot.cast]
         shot.cast.clear()
-        # 各 group を bake し直す
+        # 各 group を bake し直す（force=True で auto_bake OFF を上書き）
         for gname in affected_groups:
             try:
-                _vkb.request_bake_for_group(scene, gname)
+                _vkb.request_bake_for_group(scene, gname, force=True)
             except Exception:
                 pass
         try:
@@ -715,7 +716,7 @@ class KINEMA_OT_shot_cast_all(KinemaOperator):
             ce.enabled = True
             added += 1
             try:
-                _vkb.request_bake_for_group(scene, gname)
+                _vkb.request_bake_for_group(scene, gname, force=True)
             except Exception:
                 pass
         try:
