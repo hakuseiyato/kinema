@@ -104,12 +104,17 @@ def all_group_names(scene) -> list[str]:
     return names
 
 
+# 再帰防止フラグ（モジュールレベルで先に宣言する必要がある）
+_bake_in_progress: bool = False
+
+
 def request_bake_for_group(scene, group_name: str) -> bool:
     """指定 Group の visibility を shots[] に基づいて bake する。
 
     kinema.shots[N].cast 変更時の update callback から呼ぶ。
     yato_vis が無ければ no-op。bake 中の再帰防止はモジュール変数で。
     """
+    global _bake_in_progress  # ← 関数の冒頭で宣言（PEP 規約）
     st = get_settings(scene)
     if st is None:
         return False
@@ -131,7 +136,6 @@ def request_bake_for_group(scene, group_name: str) -> bool:
     if target is None:
         return False
     try:
-        global _bake_in_progress
         _bake_in_progress = True
         from yato_visibility_kit.ops.cast_ops import bake_group_cast  # noqa: PLC0415
         bake_group_cast(scene, target)
@@ -141,7 +145,3 @@ def request_bake_for_group(scene, group_name: str) -> bool:
         return False
     finally:
         _bake_in_progress = False
-
-
-# 再帰防止フラグ
-_bake_in_progress: bool = False
