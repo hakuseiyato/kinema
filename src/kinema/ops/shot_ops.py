@@ -640,8 +640,12 @@ class KINEMA_OT_shot_bake_cast_now(KinemaOperator):
         if not _vkb.is_available(scene):
             self.report({"WARNING"}, "yato_visibility_kit が登録されていません")
             return {"CANCELLED"}
-        # 全 Group を bake（auto_bake が OFF でも明示呼出なので走らせる）
-        from yato_visibility_kit.ops.cast_ops import bake_group_cast  # noqa: PLC0415
+        # 全 Group を bake（Extensions / legacy 両対応の動的 import 経由）
+        cast_ops_mod = _vkb.import_vk_cast_ops()
+        if cast_ops_mod is None or not hasattr(cast_ops_mod, "bake_group_cast"):
+            self.report({"ERROR"}, "yato_visibility_kit.ops.cast_ops が import 不能")
+            return {"CANCELLED"}
+        bake_group_cast = cast_ops_mod.bake_group_cast
         baked = 0
         for g in _vkb.list_groups(scene):
             try:

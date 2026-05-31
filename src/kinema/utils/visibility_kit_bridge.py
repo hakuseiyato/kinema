@@ -108,6 +108,47 @@ def all_group_names(scene) -> list[str]:
 _bake_in_progress: bool = False
 
 
+def import_vk_cast_ops():
+    """yato_visibility_kit.ops.cast_ops を Blender の Extensions / legacy
+    両対応で import する。
+
+    Blender 4.2+ の Extensions システムでは `bl_ext.user_default.<addon>` /
+    `bl_ext.<repo>.<addon>` の module 名で登録されているため、`import
+    yato_visibility_kit` は ModuleNotFoundError になる。
+
+    sys.modules を走査して、登録済みの module を優先的に拾う設計にする。
+    """
+    import sys
+    import importlib
+
+    # 1) sys.modules に既に居る yato_visibility_kit のフルパスを探す
+    candidates_in_sys: list[str] = []
+    for name in list(sys.modules.keys()):
+        # `bl_ext.user_default.yato_visibility_kit` / `yato_visibility_kit` 両対応
+        if name == "yato_visibility_kit" or name.endswith(".yato_visibility_kit"):
+            candidates_in_sys.append(name)
+    # 2) sys.modules に無くても、よく使われる候補も試す
+    fallback_paths: list[str] = [
+        "bl_ext.user_default.yato_visibility_kit",
+        "bl_ext.blender_org.yato_visibility_kit",
+        "yato_visibility_kit",
+    ]
+    for base in candidates_in_sys + fallback_paths:
+        ops_name = base + ".ops.cast_ops"
+        # sys.modules ヒット
+        if ops_name in sys.modules:
+            return sys.modules[ops_name]
+        # import 試行
+        try:
+            return importlib.import_module(ops_name)
+        except ImportError:
+            continue
+        except Exception as exc:
+            print(f"[kinema:vkb] unexpected error importing '{ops_name}': {exc}")
+            continue
+    return None
+
+
 def request_bake_for_group(scene, group_name: str) -> bool:
     """指定 Group の visibility を shots[] に基づいて bake する。
 
@@ -135,10 +176,13 @@ def request_bake_for_group(scene, group_name: str) -> bool:
             continue
     if target is None:
         return False
+    cast_ops_mod = import_vk_cast_ops()
+    if cast_ops_mod is None or not hasattr(cast_ops_mod, "bake_group_cast"):
+        print("[kinema:vkb] yato_visibility_kit.ops.cast_ops が import 不能")
+        return False
     try:
         _bake_in_progress = True
-        from yato_visibility_kit.ops.cast_ops import bake_group_cast  # noqa: PLC0415
-        bake_group_cast(scene, target)
+        cast_ops_mod.bake_group_cast(scene, target)
         return True
     except Exception as exc:
         print(f"[kinema:vkb] bake request failed for '{group_name}': {exc}")
