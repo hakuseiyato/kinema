@@ -543,8 +543,12 @@ def _draw_render_section(layout, scene, st, context) -> None:
     # ── 出力設定 サブセクション ──
     _draw_render_output_subsection(rbox, scene, st)
 
-    # ── Cuts サブセクション ──
-    _draw_cuts_subsection(rbox, scene, st)
+    # ── Shot 管理は N panel > Yato > Shots パネルに移行（Phase 2 で分離）──
+    info_row = rbox.row(align=True)
+    info_row.label(
+        text="Shot 管理: 3D View > N panel > Yato タブ > Shots",
+        icon="MARKER_HLT",
+    )
 
     # ── Render（単一ボタン + トグル）──
     rbox.separator()
@@ -658,104 +662,4 @@ def _draw_render_output_subsection(parent_box, scene, st) -> None:
     res.prop(r, "resolution_percentage", text="%")
 
 
-def _draw_cuts_subsection(parent_box, scene, st) -> None:
-    """Cuts サブセクション（旧 _draw_cuts_section を Render box 配下に組替）。"""
-    box = parent_box.box()
-    collapsed = st.cuts_collapsed
-    hdr = box.row(align=True)
-    hdr.prop(
-        st, "cuts_collapsed",
-        text="", emboss=False,
-        icon="TRIA_RIGHT" if collapsed else "TRIA_DOWN",
-    )
-    hdr.label(text="Cuts", icon="MARKER_HLT")
-    # 件数 / orphan 件数
-    n_total = len(st.cuts)
-    n_orphan = sum(1 for c in st.cuts if c.orphan)
-    n_enabled = sum(1 for c in st.cuts if c.enabled and not c.orphan)
-    if n_orphan:
-        hdr.label(text=f"{n_enabled}/{n_total}  ⚠{n_orphan}")
-    else:
-        hdr.label(text=f"{n_enabled}/{n_total}")
-
-    if collapsed:
-        return
-
-    # Sync + Diagnose 行
-    tools_row = box.row(align=True)
-    tools_row.operator(
-        "kinema.sync_cuts_from_markers",
-        text="Sync from Markers", icon="FILE_REFRESH",
-    )
-    tools_row.operator(
-        "kinema.diagnose_cut_binding",
-        text="", icon="VIEWZOOM",
-    )
-
-    # リスト
-    list_row = box.row()
-    list_row.template_list(
-        "KINEMA_UL_cuts", "",
-        st, "cuts",
-        st, "active_cut_index",
-        rows=4,
-    )
-    side = list_row.column(align=True)
-    side.operator("kinema.add_cut", text="", icon="ADD")
-    side.operator("kinema.remove_cut", text="", icon="REMOVE")
-    side.separator()
-    up = side.operator("kinema.move_cut", text="", icon="TRIA_UP")
-    up.direction = -1
-    dn = side.operator("kinema.move_cut", text="", icon="TRIA_DOWN")
-    dn.direction = 1
-    side.separator()
-    side.operator("kinema.jump_to_cut", text="", icon="PLAY")
-    side.operator("kinema.rename_cut", text="", icon="GREASEPENCIL")
-
-    # Active Cut 編集
-    idx = st.active_cut_index
-    if not (0 <= idx < len(st.cuts)):
-        return
-    cut = st.cuts[idx]
-
-    edit = box.box()
-    if cut.orphan:
-        warn = edit.row()
-        warn.alert = True
-        warn.label(
-            text=f"Marker '{cut.marker_name}' が見つかりません",
-            icon="ERROR",
-        )
-
-    # --- 主要設定（常時表示） ---
-    main = edit.column(align=True)
-    main.use_property_split = True
-    main.use_property_decorate = False
-    # name は rename カスケード対応の専用 Operator を促す（直接編集は無効化）
-    name_row = main.row(align=True)
-    name_row.label(text=f"Name: {cut.name}", icon="MARKER_HLT")
-    name_row.operator("kinema.rename_cut", text="Rename", icon="GREASEPENCIL")
-    main.prop_search(cut, "instance_name", st, "instances", text="Instance")
-    main.prop(cut, "enabled", text="Render Enabled")
-
-    # フレーム範囲: 自動 or 上書き（折り畳み）
-    fr_row = main.row(align=True)
-    fr_row.prop(cut, "frame_override", text="Override Frame Range")
-    if not cut.frame_override:
-        try:
-            from ..ops.cut_ops import _resolve_cut_frame_range, _sorted_markers
-            fs, fe = _resolve_cut_frame_range(scene, cut, _sorted_markers(scene))
-            fr_row.label(text=f"F{fs} – {fe}")
-        except Exception:
-            pass
-    else:
-        rrow = main.column(align=True)
-        rrow.prop(cut, "frame_start_override", text="Frame Start")
-        rrow.prop(cut, "frame_end_override", text="End")
-
-    main.prop(cut, "notes", text="Notes")
-
-    # --- 詳細（折り畳み式 - Marker name の直接編集は通常不要）---
-    adv = edit.row(align=True)
-    adv.alignment = "RIGHT"
-    adv.label(text=f"Marker: {cut.marker_name or '-'}", icon="OUTLINER_DATA_GP_LAYER")
+# _draw_cuts_subsection は Phase 2 で削除（Shot Manager パネルに移行）

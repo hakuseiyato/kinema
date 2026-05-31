@@ -70,33 +70,33 @@ def _on_active_instance_changed(self, context):
         pass
 
 
-def _on_active_cut_changed(self, context):
-    """Active Cut 切替時:
-      1. Cut.frame_start (override 有効なら手動値、無ければ Marker 由来) に jump
-      2. 紐付け Instance のカメラを `scene.camera` に切替（auto_preview ON 時）
-      3. 連動して active_instance_index も同期
-    UI で Cut 行クリックするだけで該当フレーム + カメラに飛ぶ運用にする。
+def _on_active_shot_changed(self, context):
+    """Active Shot 切替時:
+      1. Shot.frame_start に jump
+      2. 紐付け Instance のカメラを scene.camera に切替
+      3. active_instance_index も連動
+    Shot Manager パネルで Shot 行クリックするだけで該当 frame + カメラに飛ぶ運用。
     """
     try:
-        idx = self.active_cut_index
-        if not (0 <= idx < len(self.cuts)):
+        idx = self.active_shot_index
+        if not (0 <= idx < len(self.shots)):
             return
-        cut = self.cuts[idx]
+        shot = self.shots[idx]
         scene = context.scene
         # フレーム jump
         try:
-            from ..ops.cut_ops import _resolve_cut_frame_range, _sorted_markers  # noqa: PLC0415
+            from ..ops.shot_ops import _resolve_shot_frame_range, _sorted_markers  # noqa: PLC0415
             sorted_ms = _sorted_markers(scene)
-            fs, _fe = _resolve_cut_frame_range(scene, cut, sorted_ms)
+            fs, _fe = _resolve_shot_frame_range(scene, shot, sorted_ms)
             scene.frame_current = int(fs)
         except Exception:
             pass
-        # カメラ切替（auto_preview_on_select 連動）
+        # カメラ切替
         if not getattr(self, "auto_preview_on_select", True):
             return
-        if not cut.instance_name:
+        if not shot.instance_name:
             return
-        inst = next((i for i in self.instances if i.name == cut.instance_name), None)
+        inst = next((i for i in self.instances if i.name == shot.instance_name), None)
         if inst is None:
             return
         from ..utils import refs as _refs  # noqa: PLC0415
@@ -106,7 +106,6 @@ def _on_active_cut_changed(self, context):
         try:
             scene.camera = cam
             _select_only_object(context, cam)
-            # active_instance_index も連動（Cameras タブを開いてれば同じ Instance が選択される）
             try:
                 self.active_instance_index = list(self.instances).index(inst)
             except ValueError:
@@ -115,6 +114,12 @@ def _on_active_cut_changed(self, context):
             pass
     except Exception:
         pass
+
+
+def _on_active_cut_changed(self, context):
+    """Phase 2 で deprecated。cuts[] は auto-migrate で shots[] に統合されたので
+    このコールバックは実質呼ばれない（cuts[] が空のため）。互換のため stub を残す。"""
+    pass
 
 
 def _on_active_preset_changed(self, context):
@@ -186,13 +191,13 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
         update=_on_active_cut_changed,
     )
 
-    # --- Shot 一覧（新統合 schema, Phase 1）---
+    # --- Shot 一覧（統合 schema, Phase 2 で canonical 化）---
     # Timeline Marker × カメラ × 出演 Cast を統合管理する新エンティティ
     shots: CollectionProperty(type=shot_item.KinemaShot)
     active_shot_index: IntProperty(
         name="Active Shot",
         default=0,
-        # update callback は Phase 2 で _on_active_shot_changed を追加（自動 jump）
+        update=_on_active_shot_changed,
     )
 
     # データフォーマットバージョン

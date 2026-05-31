@@ -4,6 +4,36 @@
 
 ## [Unreleased]
 
+### Changed (BIG: Phase 2/3 - cuts[] 廃止 / shots[] canonical 化)
+- **canonical schema を `scene.kinema.shots[]` に統一**:
+  - 旧 `scene.kinema.cuts[]` と `yato_vis.groups[].cast_markers` の二重管理を解消
+  - `shots[]` がカメラ (Instance) と出演 Cast を一緒に保持
+  - `data_format_version` で旧/新を判別
+- **`.blend` 読込時の自動 migrate**:
+  - `kinema_load_post` handler が `data_format_version < 2` を検出 → 旧
+    `cuts[]` + `yato_vis.cast_markers` から `shots[]` へ透過 migrate
+  - 移行後、旧 `cuts[]` は即クリア（ユーザー要望「移行後すぐ消す」）
+  - 既存設定（カメラ / Cast / frame override / notes / orphan / Solo target）
+    は 1 つも失わず shots[] へ完全コピー
+- **Render パスを shots[] に切替**:
+  - `_resolve_render_items` の Source=CUTS は `shots[]` を読む
+  - `_build_items_from_shots` ヘルパで queue items を構築
+- **JSON I/O も shots[] を canonical 出力**:
+  - `serialize_shot` / `deserialize_shot` 追加（cast 含む）
+  - 旧 `cuts` キーも互換のため空配列で出力
+- **重複削除**:
+  - `ops/cut_ops.py` 削除（全 Operator は `shot_ops` に統合）
+  - `ui/cuts_view.py` 削除（KINEMA_UL_shots に置換）
+  - `main_panel._draw_cuts_subsection` 削除（Shot Manager パネルへ集約）
+- **Active Shot 行クリックで auto-jump**:
+  - `_on_active_shot_changed` 追加。frame_start jump + camera 切替
+
+### Added: Cast 変更 → visibility_kit bake トリガ
+- `KinemaShotCastEntry.enabled` / `solo_target_name` に update callback
+- `visibility_kit_bridge.request_bake_for_group()` で `bake_group_cast` を呼ぶ
+- 再帰防止フラグ `_bake_in_progress` で無限ループ回避
+- `yato_vis.cast_auto_bake` が OFF なら no-op（ユーザー設定尊重）
+
 ### Added: Repair Scene Operator（scene 健全化）
 - **Blender 標準レンダーまでクラッシュする** 状態の救出用 Operator を追加:
   - `KINEMA_OT_repair_scene` (`kinema.repair_scene`)

@@ -88,11 +88,148 @@ def kinema_render_cancel_clear(*args):  # noqa: ARG001
         print(f"[kinema] render_cancel error: {exc}")
 
 
+def _auto_migrate_cuts_to_shots(scene) -> None:
+    """`data_format_version < 2` かつ旧 cuts[] が存在すれば、shots[] へ自動 migrate。
+
+    Phase 2 で導入: .blend 読込時に旧データを検出 → ワンクリック不要で透過 migrate。
+    migrate 完了後、旧 cuts[] はクリアする（ユーザー希望「移行後すぐ消す」）。
+    既存設定（カメラ / Cast / frame / notes 等）は shots[] へ完全コピーされる。
+    """
+    st = getattr(scene, "kinema", None)
+    if st is None:
+        return
+    dfv = getattr(st, "data_format_version", 1)
+    has_legacy = hasattr(st, "cuts") and len(st.cuts) > 0
+    if dfv >= 2 and not has_legacy:
+        return
+    # 既に shots[] があれば skip（手動 migrate 済み）
+    if dfv >= 2 and len(st.shots) > 0:
+        return
+    try:
+        # 旧 cuts[] / yato_vis.cast_markers → shots[] へ
+        from ..ops.shot_ops import _sorted_markers, _find_instance_name_by_camera, _find_instance_by_name
+        from ..utils import visibility_kit_bridge as _vkb
+
+        # 既存 shots は一旦クリア（auto-migrate は決定的に動く）
+        st.shots.clear()
+
+        # 旧 cuts を marker_name / name でインデックス
+        cut_by_marker = {}
+        cut_by_name = {}
+        if has_legacy:
+            for c in st.cuts:
+                try:
+                    if c.marker_name:
+                        cut_by_marker[c.marker_name] = c
+                    if c.name:
+                        cut_by_name.setdefault(c.name, c)
+                except Exception:
+                    continue
+
+        # yato_vis groups の cast を marker → group リストに索引
+        cast_by_marker: dict = {}
+        if _vkb.is_available(scene):
+            for g in _vkb.list_groups(scene):
+                try:
+                    gname = g.name
+                except Exception:
+                    continue
+                solo = _vkb.resolve_solo_target(g) or ""
+                try:
+                    for cm in g.cast_markers:
+                        cast_by_marker.setdefault(cm.marker_name, []).append(
+                            {"group_name": gname, "solo_target_name": solo}
+                        )
+                except Exception:
+                    continue
+
+        sorted_ms = _sorted_markers(scene)
+        seen_markers = set()
+        added = 0
+        for m in sorted_ms:
+            seen_markers.add(m.name)
+            shot = st.shots.add()
+            shot.marker_name = m.name
+            cut = cut_by_marker.get(m.name) or cut_by_name.get(m.name)
+            if cut is not None:
+                shot.name = cut.name or m.name
+                shot.instance_name = getattr(cut, "instance_name", "") or ""
+                shot.enabled = bool(getattr(cut, "enabled", True))
+                shot.frame_override = bool(getattr(cut, "frame_override", False))
+                shot.frame_start_override = int(getattr(cut, "frame_start_override", 1))
+                shot.frame_end_override = int(getattr(cut, "frame_end_override", 250))
+                shot.notes = getattr(cut, "notes", "") or ""
+            else:
+                shot.name = m.name
+            # Instance 未解決ならカメラ → 同名でフォールバック
+            if not shot.instance_name:
+                try:
+                    cam_obj = getattr(m, "camera", None)
+                except Exception:
+                    cam_obj = None
+                resolved = ""
+                if cam_obj is not None:
+                    resolved = _find_instance_name_by_camera(st, cam_obj)
+                if not resolved:
+                    resolved = _find_instance_by_name(st, m.name)
+                if resolved:
+                    shot.instance_name = resolved
+            # Cast 移行
+            for entry in cast_by_marker.get(m.name, []):
+                ce = shot.cast.add()
+                ce.group_name = entry["group_name"]
+                ce.enabled = True
+                ce.solo_target_name = entry["solo_target_name"]
+            shot.orphan = False
+            added += 1
+
+        # Marker が消えた orphan cuts も保持
+        if has_legacy:
+            for c in st.cuts:
+                try:
+                    mn = c.marker_name or c.name
+                    if mn in seen_markers:
+                        continue
+                except Exception:
+                    continue
+                shot = st.shots.add()
+                shot.name = c.name or "(orphan)"
+                shot.marker_name = c.marker_name
+                shot.instance_name = getattr(c, "instance_name", "") or ""
+                shot.enabled = bool(getattr(c, "enabled", True))
+                shot.frame_override = bool(getattr(c, "frame_override", False))
+                shot.frame_start_override = int(getattr(c, "frame_start_override", 1))
+                shot.frame_end_override = int(getattr(c, "frame_end_override", 250))
+                shot.notes = getattr(c, "notes", "") or ""
+                shot.orphan = True
+                added += 1
+
+        # 旧 cuts[] を削除（ユーザー希望「移行後すぐ消す」）
+        if has_legacy:
+            st.cuts.clear()
+            st.active_cut_index = 0
+
+        # version 昇格
+        try:
+            st.data_format_version = 2
+        except Exception:
+            pass
+
+        n_cast = sum(len(s.cast) for s in st.shots)
+        print(
+            f"[kinema] auto-migrated scene '{scene.name}': "
+            f"{added} shots, {n_cast} cast entries"
+        )
+    except Exception as exc:
+        print(f"[kinema] auto-migrate failed for '{scene.name}': {exc}")
+
+
 @persistent
 def kinema_load_post(_dummy):
-    """`.blend` 読込時のセッション状態リセット + 健全性チェック。
+    """`.blend` 読込時のセッション状態リセット + 健全性チェック + 自動 migrate。
 
     - dispatcher キャッシュをクリア
+    - **旧 cuts[] / cast_markers → shots[] へ自動 migrate**（Phase 2 で追加）
     - 各 Scene の active_instance_index / active_preset_index を範囲内に補正
     - 参照切れ Instance（collection_ref と camera_ref がどちらも切れた）件数を
       System Console に warning ログ（破壊はしない）
@@ -104,6 +241,8 @@ def kinema_load_post(_dummy):
             st = getattr(scene, "kinema", None)
             if st is None:
                 continue
+            # 自動 migrate（旧 cuts[] → shots[]）
+            _auto_migrate_cuts_to_shots(scene)
             # index 範囲補正
             max_inst = max(0, len(st.instances) - 1)
             if st.active_instance_index > max_inst:
@@ -111,6 +250,9 @@ def kinema_load_post(_dummy):
             max_preset = max(0, len(st.presets) - 1)
             if st.active_preset_index > max_preset:
                 st.active_preset_index = max_preset
+            max_shot = max(0, len(st.shots) - 1)
+            if st.active_shot_index > max_shot:
+                st.active_shot_index = max_shot
             # 参照切れカウント（破壊しない、ログのみ）
             broken = sum(
                 1 for inst in st.instances

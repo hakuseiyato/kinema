@@ -36,6 +36,21 @@ from bpy.props import (
 )
 
 
+def _on_cast_entry_changed(self, context):
+    """cast entry の enabled / solo_target_name 変更で visibility_kit に bake 依頼。
+
+    再帰防止は visibility_kit_bridge._bake_in_progress で。
+    """
+    try:
+        from ..utils import visibility_kit_bridge as _vkb  # noqa: PLC0415
+        scene = getattr(context, "scene", None)
+        if scene is None:
+            return
+        _vkb.request_bake_for_group(scene, self.group_name)
+    except Exception:
+        pass
+
+
 class KinemaShotCastEntry(bpy.types.PropertyGroup):
     """Shot に出演する Group エントリ。yato_vis.groups[].name を参照する。"""
 
@@ -48,6 +63,7 @@ class KinemaShotCastEntry(bpy.types.PropertyGroup):
         name="On Stage",
         description="この Shot に出演するか（OFF = 非表示）",
         default=True,
+        update=_on_cast_entry_changed,
     )
     solo_target_name: StringProperty(
         name="Solo Target",
@@ -55,6 +71,7 @@ class KinemaShotCastEntry(bpy.types.PropertyGroup):
             "Solo モード時に表示する Object 名。空文字なら Solo OFF（Group 全員可視）"
         ),
         default="",
+        update=_on_cast_entry_changed,
     )
 
 

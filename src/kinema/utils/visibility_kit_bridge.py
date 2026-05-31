@@ -102,3 +102,46 @@ def all_group_names(scene) -> list[str]:
         except Exception:
             continue
     return names
+
+
+def request_bake_for_group(scene, group_name: str) -> bool:
+    """指定 Group の visibility を shots[] に基づいて bake する。
+
+    kinema.shots[N].cast 変更時の update callback から呼ぶ。
+    yato_vis が無ければ no-op。bake 中の再帰防止はモジュール変数で。
+    """
+    st = get_settings(scene)
+    if st is None:
+        return False
+    if not getattr(st, "cast_auto_bake", True):
+        return False  # ユーザーが auto_bake OFF にしている
+    if _bake_in_progress:
+        return False  # 再帰防止
+    if not group_name:
+        return False
+    # 対象 Group を探す
+    target = None
+    for g in list_groups(scene):
+        try:
+            if g.name == group_name:
+                target = g
+                break
+        except Exception:
+            continue
+    if target is None:
+        return False
+    try:
+        global _bake_in_progress
+        _bake_in_progress = True
+        from yato_visibility_kit.ops.cast_ops import bake_group_cast  # noqa: PLC0415
+        bake_group_cast(scene, target)
+        return True
+    except Exception as exc:
+        print(f"[kinema:vkb] bake request failed for '{group_name}': {exc}")
+        return False
+    finally:
+        _bake_in_progress = False
+
+
+# 再帰防止フラグ
+_bake_in_progress: bool = False

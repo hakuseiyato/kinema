@@ -323,7 +323,40 @@ def kickoff_queue_with_ranges(scene, items) -> bool:
 # 統一 Render Operator
 # ---------------------------------------------------------------------------
 
+def _build_items_from_shots(scene, shots) -> list:
+    """shots[] から render queue items を構築する。
+
+    Phase 2 で cut_ops._build_cut_queue_items から置き換え。
+    items 形式: [(sub_dir, camera_name, label, frame_start, frame_end), ...]
+    """
+    from ..ops.shot_ops import _resolve_shot_frame_range, _sorted_markers
+    st = scene.kinema
+    sorted_ms = _sorted_markers(scene)
+    base_dir = _normalize_dir(scene.render.filepath)
+    items: list = []
+    for shot in shots:
+        if shot.orphan and not shot.frame_override:
+            continue
+        if not shot.instance_name:
+            continue
+        inst = next((i for i in st.instances if i.name == shot.instance_name), None)
+        if inst is None:
+            continue
+        cam = refs.safe_object(inst.camera_ref)
+        if not refs.is_camera_object(cam):
+            continue
+        fs, fe = _resolve_shot_frame_range(scene, shot, sorted_ms)
+        sub = base_dir + shot.name + os.sep
+        items.append((sub, cam.name, shot.name, fs, fe))
+    return items
+
+
 def _resolve_render_items(scene) -> tuple[list, str]:
+    """`scene.kinema.render_source` / `render_mode` に従って items を組立。
+
+    Phase 2: source=CUTS は **shots[]** を読む（旧 cuts[] は使わない）。
+    UI 上のラベルは互換のため "Cut" を残す（次バージョンで "Shot" にリネーム予定）。
+    """
     st = scene.kinema
     source = getattr(st, "render_source", "CUTS")
     mode = getattr(st, "render_mode", "ACTIVE")
@@ -345,15 +378,15 @@ def _resolve_render_items(scene) -> tuple[list, str]:
             items.append((sub, cam.name, inst.name))
         label = f"Instance:{mode}"
     else:
-        from . import cut_ops as _cut_ops
+        # CUTS = shots[] を読む（Phase 2）
         if mode == "ACTIVE":
-            idx = st.active_cut_index
-            cuts = [st.cuts[idx]] if 0 <= idx < len(st.cuts) else []
+            idx = st.active_shot_index
+            shots = [st.shots[idx]] if 0 <= idx < len(st.shots) else []
         else:
-            cuts = [c for c in st.cuts if c.enabled and not c.orphan]
-        if cuts:
-            items, _ = _cut_ops._build_cut_queue_items(scene, cuts)
-        label = f"Cut:{mode}"
+            shots = [s for s in st.shots if s.enabled and not s.orphan]
+        if shots:
+            items = _build_items_from_shots(scene, shots)
+        label = f"Shot:{mode}"
 
     return items, label
 
