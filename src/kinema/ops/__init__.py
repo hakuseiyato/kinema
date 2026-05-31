@@ -70,6 +70,9 @@ _CLASSES = (
     shot_ops.KINEMA_OT_rename_shot,
     shot_ops.KINEMA_OT_jump_to_shot,
     shot_ops.KINEMA_OT_shot_cast_toggle,
+    shot_ops.KINEMA_OT_shot_bake_cast_now,
+    shot_ops.KINEMA_OT_shot_cast_clear,
+    shot_ops.KINEMA_OT_shot_cast_all,
     shot_ops.KINEMA_OT_diagnose_shots,
 )
 

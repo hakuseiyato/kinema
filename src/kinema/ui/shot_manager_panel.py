@@ -170,13 +170,36 @@ class KINEMA_PT_shot_manager(bpy.types.Panel):
         adv.label(text=f"Marker: {shot.marker_name or '-'}",
                   icon="OUTLINER_DATA_GP_LAYER")
 
-        # Cast マトリクス（Active Shot のみ展開で UI 軽量化）
+        # Cast マトリクス（Active Shot のみ展開で UI 軽量化、即時 bake 対応）
         cast_box = edit.box()
         cast_hdr = cast_box.row(align=True)
-        cast_hdr.label(text="Cast", icon="OUTLINER_OB_ARMATURE")
+        cast_hdr.label(text="キャスト", icon="OUTLINER_OB_ARMATURE")
         all_groups = _vkb.all_group_names(scene)
-        cast_names_active = {c.group_name for c in shot.cast if c.enabled}
+        # cast entry を group_name で索引化（Solo target 表示用）
+        cast_by_name = {c.group_name: c for c in shot.cast}
+        cast_names_active = set(cast_by_name.keys())
         cast_hdr.label(text=f"{len(cast_names_active)} / {len(all_groups)} on stage")
+        # 一括操作ボタン
+        if _vkb.is_available(scene) and all_groups:
+            tool_row = cast_box.row(align=True)
+            tool_row.operator(
+                "kinema.shot_cast_all", text="All", icon="HIDE_OFF",
+            )
+            tool_row.operator(
+                "kinema.shot_cast_clear", text="Clear", icon="X",
+            )
+            tool_row.operator(
+                "kinema.shot_bake_cast_now", text="Bake Now",
+                icon="FILE_REFRESH",
+            )
+            # yato_vis の auto_bake 状態を表示（OFF なら警告色）
+            vk_st = _vkb.get_settings(scene)
+            if vk_st is not None:
+                auto_row = cast_box.row(align=True)
+                auto_row.prop(
+                    vk_st, "cast_auto_bake", text="Auto Bake (yato_vis)",
+                )
+
         if not _vkb.is_available(scene):
             cast_box.label(
                 text="yato_visibility_kit が無いので Cast は表示されません",
@@ -184,10 +207,11 @@ class KINEMA_PT_shot_manager(bpy.types.Panel):
             )
         elif not all_groups:
             cast_box.label(
-                text="yato_vis.groups[] が空。Visibility パネルで Group 作成して下さい",
+                text="yato_vis.groups[] が空。N panel > Yato > Visibility で Group 作成して下さい",
                 icon="INFO",
             )
         else:
+            # Group 一覧（チェック + Solo Target ピッカー）
             for gname in all_groups:
                 row = cast_box.row(align=True)
                 is_on = gname in cast_names_active
@@ -198,4 +222,24 @@ class KINEMA_PT_shot_manager(bpy.types.Panel):
                     emboss=False,
                 )
                 op.group_name = gname
-                row.label(text=gname)
+                # Group 名のラベル
+                lbl = row.row(align=True)
+                lbl.scale_x = 1.4
+                lbl.label(text=gname)
+                # ON のときだけ Solo target ピッカー
+                if is_on:
+                    ce = cast_by_name[gname]
+                    sub = row.row(align=True)
+                    sub.scale_x = 1.0
+                    if ce.solo_target_name:
+                        sub.label(
+                            text=f"S:{ce.solo_target_name}",
+                            icon="RESTRICT_SELECT_OFF",
+                        )
+                    # Solo target を直接編集できるよう prop_search で
+                    sub.prop_search(
+                        ce, "solo_target_name",
+                        bpy.data, "objects",
+                        text="",
+                        icon="OUTLINER_OB_EMPTY",
+                    )

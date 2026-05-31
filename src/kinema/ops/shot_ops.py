@@ -579,15 +579,20 @@ class KINEMA_OT_jump_to_shot(KinemaOperator):
 # ---------------------------------------------------------------------------
 
 class KINEMA_OT_shot_cast_toggle(KinemaOperator):
-    """Active Shot の cast に対し group_name のエントリを ON/OFF。"""
+    """Active Shot の cast に対し group_name のエントリを ON/OFF。
+
+    リアルタイム bake: toggle 後に visibility_kit へ bake 依頼を出し、
+    viewport を即座に再評価して結果を反映する。
+    """
     bl_idname = "kinema.shot_cast_toggle"
     bl_label = "Toggle Cast Entry"
-    bl_description = "Active Shot に対する Group の出演フラグをトグル"
+    bl_description = "Active Shot に対する Group の出演フラグをトグル（即時 bake）"
 
     group_name: StringProperty()
 
     def run(self, context):
-        st = context.scene.kinema
+        scene = context.scene
+        st = scene.kinema
         idx = st.active_shot_index
         if not (0 <= idx < len(st.shots)):
             return {"CANCELLED"}
@@ -599,10 +604,121 @@ class KINEMA_OT_shot_cast_toggle(KinemaOperator):
                 break
         if existing_idx >= 0:
             shot.cast.remove(existing_idx)
+            action = "OFF"
         else:
             ce = shot.cast.add()
             ce.group_name = self.group_name
             ce.enabled = True
+            action = "ON"
+        # 明示的に bake トリガ（add/remove 両方で確実に bake する）
+        try:
+            _vkb.request_bake_for_group(scene, self.group_name)
+        except Exception as exc:
+            print(f"[kinema:shot_cast] bake failed: {exc}")
+        # viewport 即時反映のため frame 再評価
+        try:
+            scene.frame_set(scene.frame_current)
+        except Exception:
+            pass
+        self.report({"INFO"}, f"Cast '{self.group_name}' → {action}")
+        return {"FINISHED"}
+
+
+class KINEMA_OT_shot_bake_cast_now(KinemaOperator):
+    """Active Shot に紐づく全 Group を bake し直す（明示）。
+
+    `yato_vis.cast_auto_bake` が OFF の人や、cast 設定を一括変更した後の
+    強制再 bake に使う。
+    """
+    bl_idname = "kinema.shot_bake_cast_now"
+    bl_label = "Bake Cast Now"
+    bl_description = "Active Shot の cast に基づき、全 Group の hide キーを今すぐ bake"
+
+    def run(self, context):
+        scene = context.scene
+        st = scene.kinema
+        if not _vkb.is_available(scene):
+            self.report({"WARNING"}, "yato_visibility_kit が登録されていません")
+            return {"CANCELLED"}
+        # 全 Group を bake（auto_bake が OFF でも明示呼出なので走らせる）
+        from yato_visibility_kit.ops.cast_ops import bake_group_cast  # noqa: PLC0415
+        baked = 0
+        for g in _vkb.list_groups(scene):
+            try:
+                bake_group_cast(scene, g)
+                baked += 1
+            except Exception as exc:
+                print(f"[kinema:shot_cast] bake_all error on '{g.name}': {exc}")
+        # viewport refresh
+        try:
+            scene.frame_set(scene.frame_current)
+        except Exception:
+            pass
+        self.report({"INFO"}, f"Baked {baked} group(s)")
+        return {"FINISHED"}
+
+
+class KINEMA_OT_shot_cast_clear(KinemaOperator):
+    """Active Shot の cast を空にする（全 OFF）。"""
+    bl_idname = "kinema.shot_cast_clear"
+    bl_label = "Clear Cast"
+    bl_description = "Active Shot のキャストを全 OFF にして即 bake"
+
+    def run(self, context):
+        scene = context.scene
+        st = scene.kinema
+        idx = st.active_shot_index
+        if not (0 <= idx < len(st.shots)):
+            return {"CANCELLED"}
+        shot = st.shots[idx]
+        # 削除対象 group_name を控えてから clear
+        affected_groups = [ce.group_name for ce in shot.cast]
+        shot.cast.clear()
+        # 各 group を bake し直す
+        for gname in affected_groups:
+            try:
+                _vkb.request_bake_for_group(scene, gname)
+            except Exception:
+                pass
+        try:
+            scene.frame_set(scene.frame_current)
+        except Exception:
+            pass
+        self.report({"INFO"}, f"Cleared {len(affected_groups)} cast entries")
+        return {"FINISHED"}
+
+
+class KINEMA_OT_shot_cast_all(KinemaOperator):
+    """Active Shot に全 Group を ON で乗せる。"""
+    bl_idname = "kinema.shot_cast_all"
+    bl_label = "All Groups On Stage"
+    bl_description = "Active Shot に全 Group を出演 ON で追加して即 bake"
+
+    def run(self, context):
+        scene = context.scene
+        st = scene.kinema
+        idx = st.active_shot_index
+        if not (0 <= idx < len(st.shots)):
+            return {"CANCELLED"}
+        shot = st.shots[idx]
+        existing = {ce.group_name for ce in shot.cast}
+        added = 0
+        for gname in _vkb.all_group_names(scene):
+            if gname in existing:
+                continue
+            ce = shot.cast.add()
+            ce.group_name = gname
+            ce.enabled = True
+            added += 1
+            try:
+                _vkb.request_bake_for_group(scene, gname)
+            except Exception:
+                pass
+        try:
+            scene.frame_set(scene.frame_current)
+        except Exception:
+            pass
+        self.report({"INFO"}, f"Added {added} groups to stage")
         return {"FINISHED"}
 
 
