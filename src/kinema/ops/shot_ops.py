@@ -622,11 +622,8 @@ class KINEMA_OT_shot_cast_toggle(KinemaOperator):
             _vkb.request_bake_for_group(scene, self.group_name, force=True)
         except Exception as exc:
             print(f"[kinema:shot_cast] bake failed: {exc}")
-        # viewport 即時反映のため frame 再評価
-        try:
-            scene.frame_set(scene.frame_current)
-        except Exception:
-            pass
+        # viewport 即時反映（複合 refresh）
+        _vkb.force_viewport_refresh(scene)
         self.report({"INFO"}, f"Cast '{self.group_name}' → {action}")
         return {"FINISHED"}
 
@@ -661,10 +658,7 @@ class KINEMA_OT_shot_bake_cast_now(KinemaOperator):
             except Exception as exc:
                 print(f"[kinema:shot_cast] bake_all error on '{g.name}': {exc}")
         # viewport refresh
-        try:
-            scene.frame_set(scene.frame_current)
-        except Exception:
-            pass
+        _vkb.force_viewport_refresh(scene)
         self.report({"INFO"}, f"Baked {baked} group(s)")
         return {"FINISHED"}
 
@@ -691,10 +685,7 @@ class KINEMA_OT_shot_cast_clear(KinemaOperator):
                 _vkb.request_bake_for_group(scene, gname, force=True)
             except Exception:
                 pass
-        try:
-            scene.frame_set(scene.frame_current)
-        except Exception:
-            pass
+        _vkb.force_viewport_refresh(scene)
         self.report({"INFO"}, f"Cleared {len(affected_groups)} cast entries")
         return {"FINISHED"}
 
@@ -725,10 +716,7 @@ class KINEMA_OT_shot_cast_all(KinemaOperator):
                 _vkb.request_bake_for_group(scene, gname, force=True)
             except Exception:
                 pass
-        try:
-            scene.frame_set(scene.frame_current)
-        except Exception:
-            pass
+        _vkb.force_viewport_refresh(scene)
         self.report({"INFO"}, f"Added {added} groups to stage")
         return {"FINISHED"}
 
@@ -762,10 +750,14 @@ class KINEMA_OT_refresh_camera_visibility(KinemaOperator):
 
 
 class KINEMA_OT_diagnose_shots(KinemaOperator):
-    """全 shots を System Console にダンプ。"""
+    """全 shots を System Console にダンプ。
+
+    Active Shot については Cast 別の solo_target_name と、現フレームで
+    bake が判定するであろう hidden 状態（Group メンバごと）も出力する。
+    """
     bl_idname = "kinema.diagnose_shots"
     bl_label = "Diagnose Shots"
-    bl_description = "全 shots の Marker / Instance / Cast 状態を System Console にダンプ"
+    bl_description = "全 shots の Marker / Instance / Cast 状態 + Active Shot の Solo 判定を Console にダンプ"
 
     def run(self, context):
         scene = context.scene
@@ -776,16 +768,63 @@ class KINEMA_OT_diagnose_shots(KinemaOperator):
               f"data_format_version={getattr(st, 'data_format_version', '?')}")
         print(f"[kinema:shot-diag] yato_vis available: {_vkb.is_available(scene)}")
         print(f"[kinema:shot-diag] yato_vis groups: {len(_vkb.list_groups(scene))}")
+        print(f"[kinema:shot-diag] auto_hide_unused_cameras: {st.auto_hide_unused_cameras}")
         print("--- Shots ---")
         for i, s in enumerate(st.shots):
             marker = scene.timeline_markers.get(s.marker_name) if s.marker_name else None
             mk_info = f"f{marker.frame}" if marker else "NO MARKER"
-            cast_names = [c.group_name for c in s.cast if c.enabled]
+            cast_summary = []
+            for c in s.cast:
+                if not c.enabled:
+                    continue
+                solo = f" solo='{c.solo_target_name}'" if c.solo_target_name else ""
+                cast_summary.append(f"{c.group_name}{solo}")
             print(
                 f"  #{i+1} '{s.name}' marker='{s.marker_name}' ({mk_info}) "
                 f"instance='{s.instance_name or '(empty)'}' "
-                f"cast={cast_names} orphan={s.orphan}"
+                f"cast=[{', '.join(cast_summary)}] orphan={s.orphan}"
             )
+        # Active Shot の Solo 判定詳細
+        idx = st.active_shot_index
+        if 0 <= idx < len(st.shots):
+            shot = st.shots[idx]
+            print(f"--- Active Shot Solo Analysis ('{shot.name}', marker='{shot.marker_name}') ---")
+            cast_ops_mod = _vkb.import_vk_cast_ops()
+            if cast_ops_mod is not None and hasattr(cast_ops_mod, "_resolve_cast_state_at_shot"):
+                for ce in shot.cast:
+                    if not ce.enabled:
+                        continue
+                    g = None
+                    for gg in _vkb.list_groups(scene):
+                        if gg.name == ce.group_name:
+                            g = gg
+                            break
+                    if g is None:
+                        print(f"  Group '{ce.group_name}' (NOT FOUND in yato_vis)")
+                        continue
+                    cast_on, solo_target = cast_ops_mod._resolve_cast_state_at_shot(
+                        scene, g, shot.marker_name,
+                    )
+                    print(f"  Group '{ce.group_name}': cast_on={cast_on}, solo='{solo_target}'")
+                    # group_all_objects
+                    if hasattr(cast_ops_mod, "group_all_objects"):
+                        objs = cast_ops_mod.group_all_objects(g)
+                    else:
+                        try:
+                            from yato_visibility_kit.ops.group_ops import group_all_objects
+                            objs = group_all_objects(g)
+                        except Exception:
+                            objs = []
+                    for o in objs:
+                        if solo_target:
+                            is_solo = (o.name == solo_target)
+                            hidden = not (cast_on and is_solo)
+                        else:
+                            hidden = not cast_on
+                        print(f"    obj '{o.name}': hide_viewport will be {hidden} "
+                              f"(current={o.hide_viewport})")
+            else:
+                print("  (cast_ops_mod or _resolve_cast_state_at_shot not available)")
         print("=" * 60)
         self.report({"INFO"}, "Shot 診断を System Console にダンプ")
         return {"FINISHED"}

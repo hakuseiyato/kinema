@@ -18,6 +18,26 @@ import bpy
 from ..utils import refs
 
 
+def _collect_kinema_managed_cameras(scene) -> set[str]:
+    """kinema.instances[] が camera_ref で参照している全カメラ名集合。
+
+    これが「kinema が管理対象とするカメラ」。非 kinema カメラ（手動配置 / 別
+    アドオン管理 / 他用途のカメラ）は触らない（auto-hide の対象外）。
+    """
+    st = getattr(scene, "kinema", None)
+    if st is None:
+        return set()
+    managed: set[str] = set()
+    for inst in st.instances:
+        try:
+            cam = refs.safe_object(inst.camera_ref)
+            if cam is not None and cam.type == "CAMERA":
+                managed.add(cam.name)
+        except Exception:
+            continue
+    return managed
+
+
 def _collect_used_camera_names(scene) -> set[str]:
     """shots[] が参照する全 Instance の camera_ref から「使用中」カメラ名を集める。"""
     st = getattr(scene, "kinema", None)
@@ -56,20 +76,45 @@ def apply_camera_visibility(scene) -> tuple[int, int]:
     """使用していないカメラを hide_viewport=True にする。
 
     Returns: (hidden_count, shown_count) — 状態が変わったカメラ数。
+
+    `auto_hide_unused_cameras` トグルの挙動:
+      ON  → 使用してないカメラを hide
+      OFF → **全 Camera を show（kinema が hide していたカメラを復元）**
+    OFF にしたとき何もしないと「hide のまま戻せない」状態になるため、
+    明示的に show する。
     """
     st = getattr(scene, "kinema", None)
     if st is None:
         return (0, 0)
-    if not getattr(st, "auto_hide_unused_cameras", False):
-        return (0, 0)
+    auto_hide_on = bool(getattr(st, "auto_hide_unused_cameras", False))
+
+    # 対象は **kinema 管理下のカメラのみ**。手動配置 / 他用途のカメラは触らない
+    managed_names = _collect_kinema_managed_cameras(scene)
+
+    if not auto_hide_on:
+        # OFF: 管理対象カメラを全て show 状態に戻す
+        shown = 0
+        for cam_name in managed_names:
+            obj = bpy.data.objects.get(cam_name)
+            if obj is None:
+                continue
+            try:
+                if obj.hide_viewport:
+                    obj.hide_viewport = False
+                    shown += 1
+            except Exception:
+                continue
+        if shown:
+            print(f"[kinema:cam_vis] auto-hide OFF → restored {shown} kinema-managed cameras")
+        return (0, shown)
+
+    # ON: 使用してないカメラを hide（管理下のみ対象）
     used_names = _collect_used_camera_names(scene)
     hidden = 0
     shown = 0
-    for obj in bpy.data.objects:
-        try:
-            if obj.type != "CAMERA":
-                continue
-        except Exception:
+    for cam_name in managed_names:
+        obj = bpy.data.objects.get(cam_name)
+        if obj is None:
             continue
         in_use = obj.name in used_names
         want_hidden = not in_use
@@ -87,4 +132,8 @@ def apply_camera_visibility(scene) -> tuple[int, int]:
                 shown += 1
         except Exception:
             pass
+    print(
+        f"[kinema:cam_vis] auto-hide ON: {hidden} hidden, {shown} shown "
+        f"(managed={len(managed_names)}, used={len(used_names)})"
+    )
     return (hidden, shown)

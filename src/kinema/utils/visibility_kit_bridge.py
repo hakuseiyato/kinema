@@ -108,6 +108,42 @@ def all_group_names(scene) -> list[str]:
 _bake_in_progress: bool = False
 
 
+def force_viewport_refresh(scene) -> None:
+    """bake 後の viewport 即時反映を確実にするための複合 refresh。
+
+    `scene.frame_set` 1 つだけだと環境/タイミング次第で
+    visibility が viewport に反映されないことがある（hide_viewport の
+    fcurve eval は anim eval だが、UI redraw は別系統）。
+    以下 3 段階を全て叩いて確実に反映させる:
+      1. animation 再評価 (frame_set)
+      2. depsgraph update
+      3. 全 3D Viewport の tag_redraw
+    """
+    import bpy
+    # 1. animation 再評価
+    try:
+        current = scene.frame_current
+        scene.frame_set(current)
+    except Exception as exc:
+        print(f"[kinema:vkb] frame_set failed: {exc}")
+    # 2. depsgraph 更新（明示）
+    try:
+        dg = bpy.context.evaluated_depsgraph_get()
+        if dg is not None:
+            dg.update()
+    except Exception:
+        pass
+    # 3. 全 3D Viewport の tag_redraw
+    try:
+        wm = bpy.context.window_manager
+        for window in wm.windows:
+            for area in window.screen.areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
+    except Exception:
+        pass
+
+
 def import_vk_cast_ops():
     """yato_visibility_kit.ops.cast_ops を Blender の Extensions / legacy
     両対応で import する。

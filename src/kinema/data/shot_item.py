@@ -39,16 +39,18 @@ from bpy.props import (
 def _on_cast_entry_changed(self, context):
     """cast entry の enabled / solo_target_name 変更で visibility_kit に bake 依頼。
 
-    再帰防止は visibility_kit_bridge._bake_in_progress で。
+    force=True にして cast_auto_bake が OFF でも確実に bake する。
+    bake 後は viewport を即時 refresh して反映遅延を防ぐ。
     """
     try:
         from ..utils import visibility_kit_bridge as _vkb  # noqa: PLC0415
         scene = getattr(context, "scene", None)
         if scene is None:
             return
-        _vkb.request_bake_for_group(scene, self.group_name)
-    except Exception:
-        pass
+        _vkb.request_bake_for_group(scene, self.group_name, force=True)
+        _vkb.force_viewport_refresh(scene)
+    except Exception as exc:
+        print(f"[kinema:shot] cast entry update bake failed: {exc}")
 
 
 class KinemaShotCastEntry(bpy.types.PropertyGroup):
