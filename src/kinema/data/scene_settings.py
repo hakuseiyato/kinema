@@ -131,6 +131,20 @@ def _trigger_camera_visibility_update(scene):
         print(f"[kinema] camera visibility update failed: {exc}")
 
 
+def _on_auto_hide_unused_cameras_changed(self, context):
+    """auto_hide_unused_cameras トグル変更時の callback。
+
+    `update=lambda ...` だと Blender が PropertyGroup annotation を別 namespace で
+    再 eval する関係で `NameError: name '_trigger_camera_visibility_update' is not
+    defined` が起きる（File "<string>", line 1, in <lambda>）。明示的な module
+    レベル関数にして関数参照渡しすれば確実に解決できる。
+    """
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return
+    _trigger_camera_visibility_update(scene)
+
+
 def _on_active_preset_changed(self, context):
     """Active Preset 切替時、該当 Camera オブジェクトを Outliner で選択 + active に。
 
@@ -217,7 +231,7 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
             "ON にすると Timeline で使ってないカメラがビューポートから消える"
         ),
         default=False,
-        update=lambda self, ctx: _trigger_camera_visibility_update(ctx.scene),
+        update=_on_auto_hide_unused_cameras_changed,
     )
 
     # データフォーマットバージョン

@@ -265,6 +265,13 @@ def kinema_load_post(_dummy):
                     f"Instance が {broken} 件あります。"
                     f"Properties > Scene > Kinema > Refresh Instances を実行してください"
                 )
+            # auto_hide_unused_cameras が ON のシーンは初期適用
+            if getattr(st, "auto_hide_unused_cameras", False):
+                try:
+                    from . import camera_visibility  # noqa: PLC0415
+                    camera_visibility.apply_camera_visibility(scene)
+                except Exception as exc:
+                    print(f"[kinema] load_post camera visibility apply 失敗: {exc}")
     except Exception as exc:
         print(f"[kinema] load_post 健全性チェック失敗: {exc}")
 
