@@ -239,3 +239,47 @@ def request_bake_for_group(scene, group_name: str, force: bool = False) -> bool:
         return False
     finally:
         _bake_in_progress = False
+
+
+def request_bake_all_groups(scene, force: bool = False) -> int:
+    """全 Group を bake する（cast entry 変更時の確実反映用）。
+
+    **なぜ全 Group を bake するか**:
+    `request_bake_for_group` は 1 group しか触らない。Shot に新規 cast entry を
+    追加すると、その group のキーは正しく入るが、`cast に未登録の他 group`
+    （= 本来この shot では非表示にしたい group）は誰も hide キーを打たないため
+    可視のまま残ってしまう。
+    bake_group_cast は内部で「全 marker × 全 obj」を走査して cast に無ければ
+    hidden=True を出すので、全 group に対して走らせれば、shot 切替時に確実に
+    「cast の入った group だけが見える」状態になる。
+
+    Returns: bake 成功した group 数。
+    """
+    global _bake_in_progress
+    st = get_settings(scene)
+    if st is None:
+        return 0
+    if not force and not getattr(st, "cast_auto_bake", True):
+        return 0
+    if _bake_in_progress:
+        return 0
+    cast_ops_mod = import_vk_cast_ops()
+    if cast_ops_mod is None or not hasattr(cast_ops_mod, "bake_group_cast"):
+        return 0
+    baked = 0
+    try:
+        _bake_in_progress = True
+        for g in list_groups(scene):
+            try:
+                cast_ops_mod.bake_group_cast(scene, g)
+                baked += 1
+            except Exception as exc:
+                try:
+                    gname = g.name
+                except Exception:
+                    gname = "?"
+                print(f"[kinema:vkb] bake_all error on '{gname}': {exc}")
+        print(f"[kinema:vkb] bake_all: {baked} groups baked")
+        return baked
+    finally:
+        _bake_in_progress = False

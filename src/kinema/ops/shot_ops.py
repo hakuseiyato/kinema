@@ -616,12 +616,12 @@ class KINEMA_OT_shot_cast_toggle(KinemaOperator):
             ce.group_name = self.group_name
             ce.enabled = True
             action = "ON"
-        # 明示的に bake トリガ（add/remove 両方で確実に bake する）
-        # force=True: ユーザー操作なので cast_auto_bake の OFF も上書きして bake
+        # **全 Group bake**: toggle した group だけ bake すると、cast に未登録の
+        # 他 group が hide されないまま残る（shot 切替時に居座る）。
         try:
-            _vkb.request_bake_for_group(scene, self.group_name, force=True)
+            _vkb.request_bake_all_groups(scene, force=True)
         except Exception as exc:
-            print(f"[kinema:shot_cast] bake failed: {exc}")
+            print(f"[kinema:shot_cast] bake_all failed: {exc}")
         # viewport 即時反映（複合 refresh）
         _vkb.force_viewport_refresh(scene)
         self.report({"INFO"}, f"Cast '{self.group_name}' → {action}")
@@ -679,12 +679,11 @@ class KINEMA_OT_shot_cast_clear(KinemaOperator):
         # 削除対象 group_name を控えてから clear
         affected_groups = [ce.group_name for ce in shot.cast]
         shot.cast.clear()
-        # 各 group を bake し直す（force=True で auto_bake OFF を上書き）
-        for gname in affected_groups:
-            try:
-                _vkb.request_bake_for_group(scene, gname, force=True)
-            except Exception:
-                pass
+        # 全 group bake（clear した group も、他で関係する group も一括反映）
+        try:
+            _vkb.request_bake_all_groups(scene, force=True)
+        except Exception as exc:
+            print(f"[kinema:shot_cast] bake_all failed: {exc}")
         _vkb.force_viewport_refresh(scene)
         self.report({"INFO"}, f"Cleared {len(affected_groups)} cast entries")
         return {"FINISHED"}
@@ -712,10 +711,11 @@ class KINEMA_OT_shot_cast_all(KinemaOperator):
             ce.group_name = gname
             ce.enabled = True
             added += 1
-            try:
-                _vkb.request_bake_for_group(scene, gname, force=True)
-            except Exception:
-                pass
+        # 一括 bake は最後に 1 回（per-group ループを廃止して全体 1 回）
+        try:
+            _vkb.request_bake_all_groups(scene, force=True)
+        except Exception as exc:
+            print(f"[kinema:shot_cast] bake_all failed: {exc}")
         _vkb.force_viewport_refresh(scene)
         self.report({"INFO"}, f"Added {added} groups to stage")
         return {"FINISHED"}

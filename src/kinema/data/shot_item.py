@@ -39,15 +39,17 @@ from bpy.props import (
 def _on_cast_entry_changed(self, context):
     """cast entry の enabled / solo_target_name 変更で visibility_kit に bake 依頼。
 
-    force=True にして cast_auto_bake が OFF でも確実に bake する。
-    bake 後は viewport を即時 refresh して反映遅延を防ぐ。
+    **全 Group を bake する**: 1 group だけ bake すると、cast に未登録の他 group
+    が hide されないまま居座る。全 group bake すれば、bake_group_cast が
+    「全 marker × 全 obj」を走査して、cast に無い shot では hidden=True の
+    キーを必ず打ってくれるので、shot 切替時に確実に cast 通りの可視性になる。
     """
     try:
         from ..utils import visibility_kit_bridge as _vkb  # noqa: PLC0415
         scene = getattr(context, "scene", None)
         if scene is None:
             return
-        _vkb.request_bake_for_group(scene, self.group_name, force=True)
+        _vkb.request_bake_all_groups(scene, force=True)
         _vkb.force_viewport_refresh(scene)
     except Exception as exc:
         print(f"[kinema:shot] cast entry update bake failed: {exc}")
