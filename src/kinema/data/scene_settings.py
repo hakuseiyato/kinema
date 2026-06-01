@@ -122,6 +122,15 @@ def _on_active_cut_changed(self, context):
     pass
 
 
+def _trigger_camera_visibility_update(scene):
+    """auto_hide_unused_cameras 変更 / shots[] 編集時に呼ぶ。"""
+    try:
+        from ..runtime import camera_visibility  # noqa: PLC0415
+        camera_visibility.apply_camera_visibility(scene)
+    except Exception as exc:
+        print(f"[kinema] camera visibility update failed: {exc}")
+
+
 def _on_active_preset_changed(self, context):
     """Active Preset 切替時、該当 Camera オブジェクトを Outliner で選択 + active に。
 
@@ -198,6 +207,17 @@ class KinemaSceneSettings(bpy.types.PropertyGroup):
         name="Active Shot",
         default=0,
         update=_on_active_shot_changed,
+    )
+
+    # Phase B: 使用してないカメラの自動非表示
+    auto_hide_unused_cameras: BoolProperty(
+        name="Auto-hide Unused Cameras",
+        description=(
+            "shots[] で参照されていないカメラを hide_viewport=True にする。"
+            "ON にすると Timeline で使ってないカメラがビューポートから消える"
+        ),
+        default=False,
+        update=lambda self, ctx: _trigger_camera_visibility_update(ctx.scene),
     )
 
     # データフォーマットバージョン

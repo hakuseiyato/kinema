@@ -430,6 +430,12 @@ class KINEMA_OT_sync_shots_from_markers(KinemaOperator):
             parts.append(f"{orphaned} orphan")
         if cast_imported:
             parts.append(f"{cast_imported} cast imported")
+        # Phase B: 使用カメラ集合が変わった可能性が高いので可視性更新
+        try:
+            from ..runtime import camera_visibility  # noqa: PLC0415
+            camera_visibility.apply_camera_visibility(scene)
+        except Exception:
+            pass
         self.report({"INFO"}, "Sync: " + (", ".join(parts) if parts else "no change"))
         return {"FINISHED"}
 
@@ -730,6 +736,30 @@ class KINEMA_OT_shot_cast_all(KinemaOperator):
 # ---------------------------------------------------------------------------
 # 診断
 # ---------------------------------------------------------------------------
+
+class KINEMA_OT_refresh_camera_visibility(KinemaOperator):
+    """使ってないカメラを今すぐ hide_viewport=True に。
+
+    `auto_hide_unused_cameras` ON 時、shots[] 編集後などに手動で再評価したい
+    場合に使う。
+    """
+    bl_idname = "kinema.refresh_camera_visibility"
+    bl_label = "Refresh Camera Visibility"
+    bl_description = "使われていない Camera を hide_viewport=True に（今すぐ評価）"
+
+    def run(self, context):
+        from ..runtime import camera_visibility  # noqa: PLC0415
+        hidden, shown = camera_visibility.apply_camera_visibility(context.scene)
+        st = context.scene.kinema
+        if not st.auto_hide_unused_cameras:
+            self.report(
+                {"INFO"},
+                "auto_hide_unused_cameras が OFF です。トグルしてから再実行してください",
+            )
+            return {"FINISHED"}
+        self.report({"INFO"}, f"Camera vis refresh: {hidden} hidden, {shown} shown")
+        return {"FINISHED"}
+
 
 class KINEMA_OT_diagnose_shots(KinemaOperator):
     """全 shots を System Console にダンプ。"""

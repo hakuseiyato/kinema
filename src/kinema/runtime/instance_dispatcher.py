@@ -149,9 +149,20 @@ def _apply_preview_preset(scene) -> None:
     if scene.camera is not cam:
         return
     # 同じ Camera が Instance として Load 済みなら Instance 側が動かす
+    # Phase D 軽量化: cam.name で短絡判定（is 比較は wrapper 差で誤判定の可能性）
+    cam_name = cam.name
     for inst in st.instances:
-        if refs.safe_object(inst.camera_ref) is cam:
-            return
+        try:
+            ref = inst.camera_ref
+        except Exception:
+            continue
+        if ref is None:
+            continue
+        try:
+            if ref.name == cam_name:
+                return
+        except Exception:
+            continue
     cp = getattr(cam.data, "kinema_preset", None)
     if cp is None:
         return

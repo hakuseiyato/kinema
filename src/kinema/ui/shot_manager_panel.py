@@ -102,6 +102,17 @@ class KINEMA_PT_shot_manager(bpy.types.Panel):
         if not _vkb.is_available(scene):
             info.label(text="(no yato_vis)", icon="QUESTION")
 
+        # Phase B: 使用してないカメラの自動非表示トグル
+        cam_row = layout.row(align=True)
+        cam_row.prop(
+            st, "auto_hide_unused_cameras",
+            text="Hide Unused Cameras", icon="HIDE_OFF",
+        )
+        cam_row.operator(
+            "kinema.refresh_camera_visibility",
+            text="", icon="FILE_REFRESH",
+        )
+
         # Shot リスト
         list_row = layout.row()
         list_row.template_list(
