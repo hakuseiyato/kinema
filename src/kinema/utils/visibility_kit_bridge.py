@@ -241,6 +241,52 @@ def request_bake_for_group(scene, group_name: str, force: bool = False) -> bool:
         _bake_in_progress = False
 
 
+def request_clean_rebuild_for_group(scene, group_name: str) -> bool:
+    """**単一 group の破壊的再構築 bake**。
+
+    cast entry を toggle した直後に呼ぶ。通常 bake (`bake_group_cast`) は
+    marker frame でしか key を消さず prev_hidden 最適化で key を間引くため、
+    過去キーが残って状態が反映されないことがある。clean_rebuild は fcurve を
+    全消去して全 marker に明示 key を打つので、確実に最新の cast 状態に揃う。
+
+    全 group まわす版 (`request_clean_rebuild_all_groups`) は明示ボタン用。
+    こちらは toggle 経由の高頻度呼び出し向けで、対象 group の fcurve だけ touch。
+    """
+    global _bake_in_progress
+    st = get_settings(scene)
+    if st is None or not group_name:
+        return False
+    if _bake_in_progress:
+        return False
+    target = None
+    for g in list_groups(scene):
+        try:
+            if g.name == group_name:
+                target = g
+                break
+        except Exception:
+            continue
+    if target is None:
+        print(f"[kinema:vkb] clean_rebuild skip '{group_name}': group not found")
+        return False
+    cast_ops_mod = import_vk_cast_ops()
+    if cast_ops_mod is None or not hasattr(cast_ops_mod, "bake_group_cast_clean_rebuild"):
+        print("[kinema:vkb] clean_rebuild skip: cast_ops.bake_group_cast_clean_rebuild が無い")
+        return False
+    try:
+        _bake_in_progress = True
+        wiped, inserted = cast_ops_mod.bake_group_cast_clean_rebuild(scene, target)
+        print(f"[kinema:vkb] clean_rebuild '{group_name}': wiped {wiped}, inserted {inserted}")
+        return True
+    except Exception as exc:
+        print(f"[kinema:vkb] clean_rebuild FAILED for '{group_name}': {exc}")
+        import traceback
+        traceback.print_exc()
+        return False
+    finally:
+        _bake_in_progress = False
+
+
 def request_clean_rebuild_all_groups(scene) -> tuple[int, int, int]:
     """**破壊的再構築**: 全 group の hide_viewport / hide_render fcurve を全消去
     してから、shots[] に従って marker ごとに明示的に key を打ち直す。

@@ -39,17 +39,21 @@ from bpy.props import (
 def _on_cast_entry_changed(self, context):
     """cast entry の enabled / solo_target_name 変更で visibility_kit に bake 依頼。
 
-    **全 Group を bake する**: 1 group だけ bake すると、cast に未登録の他 group
-    が hide されないまま居座る。全 group bake すれば、bake_group_cast が
-    「全 marker × 全 obj」を走査して、cast に無い shot では hidden=True の
-    キーを必ず打ってくれるので、shot 切替時に確実に cast 通りの可視性になる。
+    **clean_rebuild を使う**: 通常 bake は marker frame でしか key を消さず
+    prev_hidden 最適化で key を間引くため、過去キーが支配して toggle の差分が
+    反映されない。clean_rebuild は対象 group の visibility fcurve を全消去して
+    全 marker に明示 key を打ち直すので、差分が確実に反映される。
+
+    対象は **自分の group のみ**: cast に未登録の他 group は事前に Rebuild All
+    Visibility Keys ボタンで初期化してから、以降は per-group の clean rebuild
+    だけで差分が維持される。
     """
     try:
         from ..utils import visibility_kit_bridge as _vkb  # noqa: PLC0415
         scene = getattr(context, "scene", None)
         if scene is None:
             return
-        _vkb.request_bake_all_groups(scene, force=True)
+        _vkb.request_clean_rebuild_for_group(scene, self.group_name)
         _vkb.force_viewport_refresh(scene)
     except Exception as exc:
         print(f"[kinema:shot] cast entry update bake failed: {exc}")

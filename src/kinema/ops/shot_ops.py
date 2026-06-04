@@ -616,12 +616,12 @@ class KINEMA_OT_shot_cast_toggle(KinemaOperator):
             ce.group_name = self.group_name
             ce.enabled = True
             action = "ON"
-        # **全 Group bake**: toggle した group だけ bake すると、cast に未登録の
-        # 他 group が hide されないまま残る（shot 切替時に居座る）。
+        # **clean rebuild for this group**: fcurve 完全消去 + 全 marker 明示 key で
+        # toggle の差分を確実に反映。過去キーの居残りで状態が古いままになる問題を回避。
         try:
-            _vkb.request_bake_all_groups(scene, force=True)
+            _vkb.request_clean_rebuild_for_group(scene, self.group_name)
         except Exception as exc:
-            print(f"[kinema:shot_cast] bake_all failed: {exc}")
+            print(f"[kinema:shot_cast] clean_rebuild failed: {exc}")
         # viewport 即時反映（複合 refresh）
         _vkb.force_viewport_refresh(scene)
         self.report({"INFO"}, f"Cast '{self.group_name}' → {action}")
@@ -679,11 +679,12 @@ class KINEMA_OT_shot_cast_clear(KinemaOperator):
         # 削除対象 group_name を控えてから clear
         affected_groups = [ce.group_name for ce in shot.cast]
         shot.cast.clear()
-        # 全 group bake（clear した group も、他で関係する group も一括反映）
-        try:
-            _vkb.request_bake_all_groups(scene, force=True)
-        except Exception as exc:
-            print(f"[kinema:shot_cast] bake_all failed: {exc}")
+        # 影響した group 各々に clean rebuild（差分確実反映）
+        for gname in affected_groups:
+            try:
+                _vkb.request_clean_rebuild_for_group(scene, gname)
+            except Exception as exc:
+                print(f"[kinema:shot_cast] clean_rebuild '{gname}' failed: {exc}")
         _vkb.force_viewport_refresh(scene)
         self.report({"INFO"}, f"Cleared {len(affected_groups)} cast entries")
         return {"FINISHED"}
@@ -711,11 +712,14 @@ class KINEMA_OT_shot_cast_all(KinemaOperator):
             ce.group_name = gname
             ce.enabled = True
             added += 1
-        # 一括 bake は最後に 1 回（per-group ループを廃止して全体 1 回）
-        try:
-            _vkb.request_bake_all_groups(scene, force=True)
-        except Exception as exc:
-            print(f"[kinema:shot_cast] bake_all failed: {exc}")
+        # 追加した group 全部に clean rebuild
+        for gname in _vkb.all_group_names(scene):
+            if gname in existing:
+                continue
+            try:
+                _vkb.request_clean_rebuild_for_group(scene, gname)
+            except Exception as exc:
+                print(f"[kinema:shot_cast] clean_rebuild '{gname}' failed: {exc}")
         _vkb.force_viewport_refresh(scene)
         self.report({"INFO"}, f"Added {added} groups to stage")
         return {"FINISHED"}
