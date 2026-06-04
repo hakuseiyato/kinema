@@ -241,6 +241,54 @@ def request_bake_for_group(scene, group_name: str, force: bool = False) -> bool:
         _bake_in_progress = False
 
 
+def request_clean_rebuild_all_groups(scene) -> tuple[int, int, int]:
+    """**破壊的再構築**: 全 group の hide_viewport / hide_render fcurve を全消去
+    してから、shots[] に従って marker ごとに明示的に key を打ち直す。
+
+    通常 bake は marker frame でしか key を消さないため、過去 bake や手動キー打ち
+    で marker 外に残った key が支配して group が居座る現象が発生する。
+    この関数はそれを完全リセットする。
+
+    Returns: (rebuilt_group_count, total_wiped_fcurves, total_inserted_keys)
+    """
+    global _bake_in_progress
+    st = get_settings(scene)
+    if st is None:
+        return (0, 0, 0)
+    if _bake_in_progress:
+        return (0, 0, 0)
+    cast_ops_mod = import_vk_cast_ops()
+    if cast_ops_mod is None or not hasattr(cast_ops_mod, "bake_group_cast_clean_rebuild"):
+        print("[kinema:vkb] clean_rebuild skip: cast_ops.bake_group_cast_clean_rebuild が無い")
+        return (0, 0, 0)
+    rebuilt = 0
+    total_wiped = 0
+    total_inserted = 0
+    try:
+        _bake_in_progress = True
+        for g in list_groups(scene):
+            try:
+                wiped, inserted = cast_ops_mod.bake_group_cast_clean_rebuild(scene, g)
+                total_wiped += wiped
+                total_inserted += inserted
+                rebuilt += 1
+            except Exception as exc:
+                try:
+                    gname = g.name
+                except Exception:
+                    gname = "?"
+                print(f"[kinema:vkb] clean_rebuild error on '{gname}': {exc}")
+                import traceback
+                traceback.print_exc()
+        print(
+            f"[kinema:vkb] clean_rebuild: {rebuilt} groups, "
+            f"wiped {total_wiped} fcurves, inserted {total_inserted} keys"
+        )
+        return (rebuilt, total_wiped, total_inserted)
+    finally:
+        _bake_in_progress = False
+
+
 def request_bake_all_groups(scene, force: bool = False) -> int:
     """全 Group を bake する（cast entry 変更時の確実反映用）。
 

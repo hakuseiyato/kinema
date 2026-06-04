@@ -73,6 +73,7 @@ _CLASSES = (
     shot_ops.KINEMA_OT_shot_bake_cast_now,
     shot_ops.KINEMA_OT_shot_cast_clear,
     shot_ops.KINEMA_OT_shot_cast_all,
+    shot_ops.KINEMA_OT_shot_cast_rebuild_all,
     shot_ops.KINEMA_OT_refresh_camera_visibility,
     shot_ops.KINEMA_OT_diagnose_shots,
 )

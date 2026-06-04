@@ -203,6 +203,14 @@ class KINEMA_PT_shot_manager(bpy.types.Panel):
                 "kinema.shot_bake_cast_now", text="Bake Now",
                 icon="FILE_REFRESH",
             )
+            # 破壊的再構築（過去キー全消し → shots[] から打ち直し）
+            rebuild_row = cast_box.row(align=True)
+            rebuild_row.alert = True
+            rebuild_row.operator(
+                "kinema.shot_cast_rebuild_all",
+                text="Rebuild All Visibility Keys",
+                icon="TRASH",
+            )
             # yato_vis の auto_bake 状態を表示（OFF なら警告色）
             vk_st = _vkb.get_settings(scene)
             if vk_st is not None:

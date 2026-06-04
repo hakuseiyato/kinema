@@ -725,6 +725,39 @@ class KINEMA_OT_shot_cast_all(KinemaOperator):
 # 診断
 # ---------------------------------------------------------------------------
 
+class KINEMA_OT_shot_cast_rebuild_all(KinemaOperator):
+    """**全 Group の visibility キーを破壊的再構築**。
+
+    通常 bake では marker frame でしか key を消さないため、過去 bake や手動キー打ち
+    で marker 外に残った key が支配して group が居座る現象を解消できない。
+    このボタンは hide_viewport / hide_render fcurve を **fcurve 自体ごと全消去** し、
+    shots[] の cast に従って全 marker に明示的に key を打ち直す。
+    """
+    bl_idname = "kinema.shot_cast_rebuild_all"
+    bl_label = "Rebuild All Visibility Keys"
+    bl_description = (
+        "全 Group の hide_viewport / hide_render fcurve を完全消去してから "
+        "shots[] に従って打ち直す（カット内の居座り group 解消用）"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _vkb.is_available(context.scene)
+
+    def run(self, context):
+        scene = context.scene
+        if not _vkb.is_available(scene):
+            self.report({"WARNING"}, "yato_visibility_kit が登録されていません")
+            return {"CANCELLED"}
+        rebuilt, wiped, inserted = _vkb.request_clean_rebuild_all_groups(scene)
+        _vkb.force_viewport_refresh(scene)
+        self.report(
+            {"INFO"},
+            f"Rebuild: {rebuilt} groups / wiped {wiped} fcurves / inserted {inserted} keys",
+        )
+        return {"FINISHED"}
+
+
 class KINEMA_OT_refresh_camera_visibility(KinemaOperator):
     """使ってないカメラを今すぐ hide_viewport=True に。
 
