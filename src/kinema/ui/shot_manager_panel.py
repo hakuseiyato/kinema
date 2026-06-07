@@ -52,6 +52,12 @@ class KINEMA_UL_shots(bpy.types.UIList):
 
 
 class KINEMA_PT_shot_manager(bpy.types.Panel):
+    """Yato タブの統合 umbrella パネル。
+
+    yato_visibility_kit の Groups / Quick Toggle / Burst & Range / Active Object
+    / Snapshots はこのパネルの子として表示される（bl_parent_id 経由）。
+    Shot Cast 操作も含めて 1 パネルツリーに集約。
+    """
     bl_label = "Shots"
     bl_idname = "KINEMA_PT_shot_manager"
     bl_space_type = "VIEW_3D"
@@ -211,6 +217,38 @@ class KINEMA_PT_shot_manager(bpy.types.Panel):
                 text="Rebuild All Visibility Keys",
                 icon="TRASH",
             )
+
+            # Legacy メンテツール (YATOVIS_PT_shot_cast 削除に伴い移管)
+            # 旧 cast_markers が残ってるシーン用 / 既存 anim からの import
+            maint_row = cast_box.row(align=True)
+            maint_row.scale_y = 0.85
+            maint_row.operator(
+                "yato_vis.cast_bake_all",
+                text="Bake (Legacy)", icon="PLAY",
+            )
+            maint_row.operator(
+                "yato_vis.cast_import_from_visibility",
+                text="Import Anim", icon="IMPORT",
+            )
+            # orphan 検出
+            cam_markers = [m for m in scene.timeline_markers if m.camera is not None]
+            current_marker_names = {m.name for m in cam_markers}
+            vk_st = _vkb.get_settings(scene)
+            total_orphans = 0
+            if vk_st is not None:
+                for g in vk_st.groups:
+                    for c in g.cast_markers:
+                        if c.marker_name not in current_marker_names:
+                            total_orphans += 1
+            if total_orphans > 0:
+                orph_row = cast_box.row(align=True)
+                orph_row.alert = True
+                orph_row.label(text=f"⚠ Orphan cast: {total_orphans}", icon="ERROR")
+                op = orph_row.operator(
+                    "yato_vis.cast_remove_orphans",
+                    text="Clean", icon="BRUSH_DATA",
+                )
+                op.group_index = -1
             # yato_vis の auto_bake 状態を表示（OFF なら警告色）
             vk_st = _vkb.get_settings(scene)
             if vk_st is not None:
