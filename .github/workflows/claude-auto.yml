@@ -44,6 +44,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: --max-turns 8
           prompt: |
             あなたは実装担当のエンジニアです。以下の Issue を実装してください。
@@ -79,6 +80,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: --max-turns 5
           prompt: |
             あなたはレビュー担当のエンジニアです。実装担当とは別のセッションとして、
@@ -136,6 +138,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: --max-turns 8
           prompt: |
             あなたは実装担当のエンジニアです。以下の PR に対するレビューで
