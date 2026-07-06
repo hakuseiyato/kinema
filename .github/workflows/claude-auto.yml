@@ -1,10 +1,11 @@
-# Claude Code による Issue 駆動の自動実装・レビュー・マージワークフロー
+# Claude Code による PR レビュー・修正ループ・自動マージワークフロー
 #
-# 流れ:
-#   1. Issue が open されると Claude が実装して PR を作成し claude-managed ラベルを付与
-#   2. claude-managed ラベル付き PR が open/更新されると別セッションの Claude が敵対的にレビュー
-#   3. changes_requested レビューが付くと Claude が同ブランチへ修正を push（3回まで）
-#   4. approved レビューが付くと自動で squash マージ
+# 流れ（Issue への自動着手は廃止。ローカルの Claude Code セッションが作業開始時に
+#       未処理 Issue を検知し、対応するかどうかを判断する。詳細は
+#       C:\Users\brain\.claude\hooks\session_start.py を参照）:
+#   1. claude-managed ラベル付き PR が open/更新されると別セッションの Claude が敵対的にレビュー
+#   2. changes_requested レビューが付くと Claude が同ブランチへ修正を push（3回まで）
+#   3. approved レビューが付くと自動で squash マージ
 #
 # 前提: リポジトリ Secrets に ANTHROPIC_API_KEY を設定すること（未設定でも push 自体は可能）
 # 注意: anthropics/claude-code-action@v1 の入力パラメータ名は判明している範囲で記述。
@@ -13,8 +14,6 @@
 name: Claude Auto
 
 on:
-  issues:
-    types: [opened]
   pull_request:
     types: [opened, synchronize]
   pull_request_review:
@@ -26,43 +25,7 @@ permissions:
   issues: write
 
 jobs:
-  # 1. Issue を実装し、ブランチを切って PR を作成する
-  implement:
-    if: ${{ github.event_name == 'issues' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    concurrency:
-      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
-      cancel-in-progress: false
-    steps:
-      - name: リポジトリをチェックアウト
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Claude で実装して PR を作成
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          claude_args: --max-turns 8
-          prompt: |
-            あなたは実装担当のエンジニアです。以下の Issue を実装してください。
-
-            Issue 番号: #${{ github.event.issue.number }}
-            タイトル: ${{ github.event.issue.title }}
-            本文:
-            ${{ github.event.issue.body }}
-
-            手順:
-            1. Issue の内容を実装する。
-            2. 新規ブランチを切る（例: claude/issue-${{ github.event.issue.number }}）。
-            3. 変更をコミットして push する。
-            4. そのブランチから PR を作成する。PR 本文には対象 Issue（#${{ github.event.issue.number }}）を記載すること。
-            5. 作成した PR に必ず claude-managed ラベルを付与すること
-               （ラベルが存在しない場合は gh label create で作成してから付与する）。
-
-  # 2. claude-managed ラベル付き PR を敵対的にレビューする（実装とは別セッション）
+  # 1. claude-managed ラベル付き PR を敵対的にレビューする（実装とは別セッション）
   review:
     if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'claude-managed') }}
     runs-on: ubuntu-latest
