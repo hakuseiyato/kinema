@@ -1,0 +1,174 @@
+# Claude Code による Issue 駆動の自動実装・レビュー・マージワークフロー
+#
+# 流れ:
+#   1. Issue が open されると Claude が実装して PR を作成し claude-managed ラベルを付与
+#   2. claude-managed ラベル付き PR が open/更新されると別セッションの Claude が敵対的にレビュー
+#   3. changes_requested レビューが付くと Claude が同ブランチへ修正を push（3回まで）
+#   4. approved レビューが付くと自動で squash マージ
+#
+# 前提: リポジトリ Secrets に ANTHROPIC_API_KEY を設定すること（未設定でも push 自体は可能）
+# 注意: anthropics/claude-code-action@v1 の入力パラメータ名は判明している範囲で記述。
+#       詳細パラメータが不明な箇所は「要調整」とコメントで明記している。
+
+name: Claude Auto
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened, synchronize]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  # 1. Issue を実装し、ブランチを切って PR を作成する
+  implement:
+    if: ${{ github.event_name == 'issues' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude で実装して PR を作成
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: --max-turns 8
+          prompt: |
+            あなたは実装担当のエンジニアです。以下の Issue を実装してください。
+
+            Issue 番号: #${{ github.event.issue.number }}
+            タイトル: ${{ github.event.issue.title }}
+            本文:
+            ${{ github.event.issue.body }}
+
+            手順:
+            1. Issue の内容を実装する。
+            2. 新規ブランチを切る（例: claude/issue-${{ github.event.issue.number }}）。
+            3. 変更をコミットして push する。
+            4. そのブランチから PR を作成する。PR 本文には対象 Issue（#${{ github.event.issue.number }}）を記載すること。
+            5. 作成した PR に必ず claude-managed ラベルを付与すること
+               （ラベルが存在しない場合は gh label create で作成してから付与する）。
+
+  # 2. claude-managed ラベル付き PR を敵対的にレビューする（実装とは別セッション）
+  review:
+    if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'claude-managed') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude で PR を敵対的にレビュー
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: --max-turns 5
+          prompt: |
+            あなたはレビュー担当のエンジニアです。実装担当とは別のセッションとして、
+            以下の PR を敵対的に（批判的に）レビューしてください。
+
+            PR 番号: #${{ github.event.pull_request.number }}
+            タイトル: ${{ github.event.pull_request.title }}
+            ブランチ: ${{ github.event.pull_request.head.ref }}
+
+            手順:
+            1. PR の差分を精査し、バグ・設計上の問題・仕様との齟齬・セキュリティ上の懸念を洗い出す。
+            2. 問題がなければ `gh pr review ${{ github.event.pull_request.number }} --approve` で承認する。
+            3. 問題があれば `gh pr review ${{ github.event.pull_request.number }} --request-changes`
+               を実行し、修正すべき点を具体的にコメントとして残すこと。
+
+  # 3. changes_requested レビューに応じて同ブランチへ修正を push する（3回まで）
+  handle-review:
+    if: ${{ github.event_name == 'pull_request_review' && github.event.review.state == 'changes_requested' && contains(github.event.pull_request.labels.*.name, 'claude-managed') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: これまでの changes_requested レビュー回数を数える
+        id: count
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # この PR に付いた changes_requested レビューの累計回数を取得する
+          count=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
+            --paginate --jq '[.[] | select(.state == "CHANGES_REQUESTED")] | length')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "これまでの changes_requested 回数: $count"
+
+      - name: 試行回数が上限を超えていたら人の確認を依頼して終了
+        if: ${{ fromJSON(steps.count.outputs.count) > 3 }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} --add-label needs-human || \
+            (gh label create needs-human --color B60205 --description "人の確認が必要" && \
+             gh pr edit ${{ github.event.pull_request.number }} --add-label needs-human)
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "3回試行しましたが未解決のため人の確認をお願いします"
+
+      - name: 3回以下なら Claude でレビュー指摘を反映して修正を push
+        if: ${{ fromJSON(steps.count.outputs.count) <= 3 }}
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: --max-turns 8
+          prompt: |
+            あなたは実装担当のエンジニアです。以下の PR に対するレビューで
+            変更が要求されました。レビューコメントの内容を確認し、指摘を修正してください。
+
+            PR 番号: #${{ github.event.pull_request.number }}
+            ブランチ: ${{ github.event.pull_request.head.ref }}
+            レビュー本文:
+            ${{ github.event.review.body }}
+
+            手順:
+            1. `gh pr view ${{ github.event.pull_request.number }} --comments` などで
+               レビューコメントの詳細を確認する。
+            2. 指摘内容を踏まえてコードを修正する。
+            3. 同じブランチ（${{ github.event.pull_request.head.ref }}）に修正をコミットして push すること。
+               新しい PR は作らない。
+
+  # 4. approved レビューに応じて自動マージする
+  auto-merge:
+    if: ${{ github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(github.event.pull_request.labels.*.name, 'claude-managed') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: squash で自動マージ
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} --squash --auto
